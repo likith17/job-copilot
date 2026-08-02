@@ -16,8 +16,9 @@ def match_score(resume_text, job_text):
     score = len(shared) / len(total)
     return score, shared
 
-resume = "Python developer with machine learning and Docker experience"
-job = "Looking for a Python engineer with Docker and cloud skills"
-score, shared = match_score(resume, job)
-print("Score:", score)
-print("Shared words:", shared)
+if __name__ == "__main__":
+    resume = "Python developer with machine learning and Docker experience"
+    job = "Looking for a Python engineer with Docker and cloud skills"
+    score, shared = match_score(resume, job)
+    print("Score:", score)
+    print("Shared words:", shared)
