@@ -1,45 +1,77 @@
-Postman is the world’s leading API platform, used by more than 45 million+ developers and 500,000 organizations, including 98% of the Fortune 500. Postman is helping developers and professionals across the globe build the API-first world by simplifying each step of the API lifecycle and streamlining collaboration—enabling users to create better APIs, faster.
+Position Information
 
-The company is headquartered in San Francisco and has offices in Boston, New York, Austin, Tokyo, London, and Bangalore - where Postman was founded. Postman is privately held, with funding from Battery Ventures, BOND, Coatue, CRV, Insight Partners, and Nexus Venture Partners. Learn more at postman.com or connect with Postman on X via @getpostman.
+About Fordham
 
-P.S: We highly recommend reading The "API-First World" graphic novel to understand the bigger picture and our vision at Postman.
+Founded in 1841, Fordham is the Jesuit University of New York, offering an exceptional education distinguished by the Jesuit tradition to more than 16,000 students in its nine colleges and schools. It has residential campuses in the Bronx and Manhattan, a campus in West Harrison, N.Y., the Louis Calder Center Biological Field Station in Armonk, N.Y., and the London Centre in the United Kingdom.
 
-The Opportunity
-We're seeking an AI Engineer Intern to work alongside our AI team on large-scale AI and Agentic  systems from data pipeline to production deployment. This role is scoped for someone with foundational experience who wants to deepen it: you'll own discrete pieces of real systems under the mentorship of senior engineers, not shadow work or isolated coursework-style projects.
+The University offers a comprehensive benefits package that includes medical, dental, and vision insurance; flexible spending accounts; retirement plans; life insurance; short and long-term disability; employee assistance program (EAP); tuition remission; and generous time off.
 
- 
-What You'll Do
-Model Development
+Successful candidates should have a knowledge of and commitment to the goals of Jesuit Education.
 
-Partner with product managers, designers, and engineers to translate product requirements into scoped AI problem statements.
-Prepare data pipeline and AI store design under senior engineer guidance.
-Build and validate AI models using PyTorch or JAX(Optax/Orbax / TensorStore/Grain) and similar tools.
-Run large-scale experiments, evaluate models against defined metrics, and support ablation studies and error analysis.
-Productionization
+Title of Position AI/Machine Learning Engineer Position Number A11100 FLSA Exempt Scheduled Hours Per Week 35 Department Enterprise AI Campus Rose Hill, Lincoln Center Work Arrangement Hybrid Hybrid Policy: Please review the Hybrid Policy at www.fordham.edu/hybridpolicy. Position Summary
 
-Help build inference APIs and batch scoring workflows; integrate AI outputs with backend services.
-Support AIOps practices already in place on the team: model versioning, CI/CD pipelines, monitoring dashboards, and logging.
-Assist with model optimization work (quantization, batching, distillation) under supervision -this is a learning objective, not an expected independent deliverable.
-Operational Rigor
+Reporting to the Assistant Vice President of Enterprise AI, the AI/Machine Learning Engineer supports the advancement of the University's enterprise AI strategy by designing, building, and implementing practical artificial intelligence and machine learning solutions across the university ecosystem. This senior role serves as a technical implementation lead, contributing to a dual-path approach focused on developing targeted AI agents to support the student journey and building predictive models that help anticipate institutional needs.
 
-Contribute to root-cause analysis on production issues alongside senior engineers.
-Document experiments, design decisions, and runbooks so your work is legible to the next person who touches it.
-Flag fairness, interpretability, or privacy concerns you observe in data or model behavior….you're not expected to resolve these alone, but surfacing them is part of the job.
- 
-About You
-Currently pursuing a BS/MS/PhD in Computer Science, Data Science, or a related field.
-Some hands-on experience with ML systems - course projects, research, hackathons, or a prior internship all count. We are not requiring 1+ years of production experience for this role; that bar belongs on a full-time posting, not an internship.
-Solid Python/Rust fundamentals: data structures, functions, basic testing, comfort reading and writing code reviews.
-Exposure to at least one AI/ML frameworks (PyTorch or JAX) and basic data tooling (Pandas, SQL).
-Nice to have, not required: familiarity with a cloud platform (AWS/GCP/Azure), Docker, or a model-serving tool (vLLM, Triton, Ray Serve).
-Clear written and verbal communication. You'll be documenting your own work and asking questions across product, design, and engineering.
-What Else?
-In addition to Postman's pay-on-performance philosophy, and a flexible schedule working with a fun, collaborative team, Postman offers a comprehensive set of benefits, including full medical coverage, flexible PTO, wellness reimbursement, and a monthly lunch stipend. Along with that, our wellness programs will help you stay in the best of your physical and mental health. Our frequent and fascinating team-building events will keep you connected, while our donation-matching program can support the causes you care about. We’re building a long-term company with an inclusive culture where everyone can be the best version of themselves. 
+Working closely with the AVP, information technology, data governance, academic, and administrative stakeholders, the role translates institutional needs into secure, scalable, ethical, and privacy-compliant AI/ML solutions that improve campus operations, decision support, and student outcomes.
 
-At Postman we value in person collaboration. We are in office 5 days a week for all roles based out of our hubs in San Francisco Bay Area, Boston, Austin, New York City, Tokyo and London. For roles based in Bangalore, employees currently work in the office three days a week and will transition to five days per week by the end of the year. We were thoughtful in our approach which is based on collaboration and grounded in feedback from our workforce, leadership team, and peers. The benefits of our in office model will be shared knowledge, brainstorming sessions, communication, and building trust in-person that cannot be replicated via zoom.
+Essential Functions
 
-Our Values
-At Postman, we create with the same curiosity that we see in our users. We value transparency and honest communication about not only successes, but also failures. In our work, we focus on specific goals that add up to a larger vision. Our inclusive work culture ensures that everyone is valued equally as important pieces of our final product. We are dedicated to delivering the best products we can.
+Designs and deploys multi-agent systems capable of reasoning, tool-use, and autonomous problem-solving throughout the student success lifecycle (Recruitment, Learning and Development, Career Services, and Alumni Relations).
 
-Equal opportunity
-Postman is an Equal Employment Opportunity and Affirmative Action Employer. Qualified applicants will receive consideration for employment without regard to race, color, religion, sex, sexual orientation, gender perception or identity, national origin, age, marital status, protected veteran status, or disability status. Headhunters and recruitment agencies may not submit resumes/CVs through this website or directly to managers. Postman does not accept unsolicited headhunter and agency resumes. Postman will not pay fees to any third-party agency or company that does not have a signed agreement with Postman.
+Develops and maintains predictive models that provide actionable insights into areas such as student success, enrollment planning, operational efficiency, and early identification of students who may benefit from timely support.
+
+Identifies opportunities to improve university operations and student outcomes through practical AI/ML solutions, including workflow automation, decision-support tools, and AI-assisted administrative processes.
+
+Assists in the development of the technical roadmap for AI and machine learning implementation by assessing feasibility, documenting solution architecture, recommending scalable approaches, and supporting implementation priorities established by the AVP, with attention to ethics, privacy, security, FERPA/GDPR, and applicable governance standards.
+
+Builds and supports retrieval-augmented generation workflows, vector database integrations, and AI application components using approved platforms, institutional data sources, and responsible development practices.
+
+Serves as the liaison between university leadership (Administration, Deans, Faculty), technical AI/Data Science teams, and external vendors to align academic mission with technological execution.
+
+Essential Functions Note This list is not intended to be an exhaustive list.
+
+The University may assign additional related duties as necessary. Management Responsibilities Not responsible for supervision or oversight of others. Additional Functions
+
+Architects AI agents using RAG (Retrieval-Augmented Generation) pipelines, Model Context Protocol, and Operational data.
+
+Develops MLOps frameworks compliant with AI Governance policy.
+
+Required Qualifications: Education and Experience
+
+Master's in Computer Science, AI/Data science, Engineering, or a related field.
+
+Minimum of 5 years of experience in Machine Learning or Data Science, with a track record of deploying predictive models in a production environment.
+
+Required Qualifications: Knowledge and Skills
+
+Deep proficiency in Large Language Models (LLMs) and development & deployment of autonomous AI agents (for example, leveraging LangChain and CrewAI) to move beyond simple chat interfaces into scalable, agent-driven automation.
+
+Strong foundation in statistical modeling and classification algorithms.
+
+Proficiency in building RAG (Retrieval-Augmented Generation) pipelines and working with vector databases.
+
+Strong coding skills in Python and experience with MLOps frameworks to monitor model drift and performance.
+
+Preferred Qualifications
+
+Ph.D degree in Computer Science, Engineering, or a related field.
+
+Minimum Starting Salary 128,000 Maximum Starting Salary 160,000 Note Salary is commensurate with qualifications, experience, and skills. Is this a Union position? No
+
+Posting Detail Information
+
+Posting Number A1108P Number of Vacancies 1 Start Date ASAP Posting Date 07/28/2026 Special Instructions EEO Statement
+
+Fordham University is committed to excellence and welcomes candidates of all backgrounds.
+
+Fordham University is an Equal Opportunity Employer. All qualified applicants will receive consideration for employment without regard to race, color, religion, sex, orientation, gender identity or expression, pregnancy, age, national origin, disability status, genetic information, protected veteran status, or any other characteristic protected by law.
+
+Physical Activity and Work Environment
+
+Physical Activity
+
+Sitting Often Repetitive Hand Motion (such as typing) Often Hearing, Listening, Talking Often Standing Seldom Walking Seldom Running Not Required Bending, Stooping, Kneeling, squatting, Crouching, Crawling Not Required Climbing stairs Not Required Climbing ladders Not Required Reaching overhead Not Required Pulling, pushing Not Required Shoveling Not Required Lifting - up to 20 pounds Not Required Lifting - up to 50 pounds Not Required Lifting - over 50 pounds Not Required
+
+Work Environment
+
+Work Environment Office Environment: Employees are protected from weather conditions or contaminants, but not necessarily occasional temperature changes.
