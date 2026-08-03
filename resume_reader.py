@@ -25,16 +25,15 @@ def read_pdf(file_path):
         text = text + page.extract_text() + " "
     return text
 
-root = tk.Tk()
-root.withdraw()  # hide the empty extra window tkinter creates
-
-file_path = filedialog.askopenfilename(
-    title="Select your resume",
-    filetypes=[("Documents", "*.pdf *.docx"), ("All files", "*.*")]
-)
-
-if not file_path:
-    print("No file selected.")
-else:
-    resume_text = read_resume(file_path)
-    print(resume_text)
+if __name__ == "__main__":
+    root = tk.Tk()
+    root.withdraw()
+    file_path = filedialog.askopenfilename(
+        title="Select your resume",
+        filetypes=[("Documents", "*.pdf *.docx"), ("All files", "*.*")]
+    )
+    if not file_path:
+        print("No file selected.")
+    else:
+        resume_text = read_resume(file_path)
+        print(resume_text)

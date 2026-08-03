@@ -45,18 +45,6 @@ def get_jobs_ranked():
     conn.close()
     return rows
 
-create_table()
-
-create_table()
-
-# Add a few fake jobs to test
-create_table()
-
-save_job("Google", "ML Engineer", "google.com/job/1", "Build ML systems", 0.82)
-save_job("Amazon", "Data Scientist", "amazon.com/job/2", "Analyze data", 0.65)
-save_job("Netflix", "AI Engineer", "netflix.com/job/3", "Recommendation models", 0.91)
-save_job("Google", "ML Engineer", "google.com/job/1", "Build ML systems", 0.82)  # same URL — should be skipped
-
-print("\n--- Jobs ranked by match ---")
-for row in get_jobs_ranked():
-    print(row)
+if __name__ == "__main__":
+    create_table()
+    print("Database ready.")
