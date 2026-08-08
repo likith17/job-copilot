@@ -5,6 +5,7 @@ from sentence_transformers import SentenceTransformer
 from database import save_job as db_save_job 
 from matcher import match_score
 from skills import SKILLS
+from sponsors import sponsorship_signal
 import numpy as np
 
 load_dotenv()
@@ -103,7 +104,7 @@ def run_agent(user_request, resume_text):
         response = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=2000,
-            system="You are a job-application assistant. When you need to use a tool, call it directly with the required inputs. Do not narrate what you're about to do.",
+            system="You are a job-application assistant. When you need a tool, call it directly with the required inputs. When reporting a match, use ONLY the matched and missing skills the score tool returns — do not guess or invent gaps. State the score, the skills the candidate has, and the specific skills they're missing.",
             tools=tools,
             messages=messages
         )
@@ -127,7 +128,12 @@ def run_agent(user_request, resume_text):
                     print("Denied.")
                 else:
                     if block.name == "score_job":
-                        result = str(score_job(resume_text, block.input["job_description"]))
+                        combined, matched, missing = hybrid_score(resume_text, block.input["job_description"])
+                        result = (
+                            f"Match score: {round(combined, 3)}\n"
+                            f"Skills the resume HAS that the job wants: {matched}\n"
+                            f"Skills the job wants that the resume is MISSING: {missing}"
+                        )
                     elif block.name == "draft_tailored_bullets":
                         result = draft_tailored_bullets(resume_text, block.input["job_description"])
                     elif block.name == "save_job":
@@ -155,19 +161,30 @@ def hybrid_score(resume_text, job_description, weight=0.6):
     combined = (weight * semantic) + ((1 - weight) * skill)
     return combined, matched, missing
 
+def final_score(resume_text, job_description, company):
+    match, matched, missing = hybrid_score(resume_text, job_description)
+    sponsors = sponsorship_signal(company)
+
+    # Non-sponsors aren't hidden, just ranked lower: keep 70% of their score.
+    sponsor_multiplier = 1.0 if sponsors == 1.0 else 0.7
+    final = match * sponsor_multiplier
+
+    return final, match, sponsors, matched, missing
+
 if __name__ == "__main__":
     from resume_reader import read_resume
-    resume = read_resume("resume.pdf")   # your real filename
+    resume = read_resume("resume.pdf")
     with open("job.txt", "r", encoding="utf-8") as f:
         job = f.read()
 
     run_agent(
         "Score this job against my resume, and if it scores above 0.35, save it. "
-        "Company: Columbia University, title: Associate AI Engineer, url: https://opportunities.columbia.edu/jobs/associate-ai-engineer-columbia-university-medical-center-new-york-united-states?source=IND . Job: " + job,
+        "Company: Columbia University, title: Associate AI Engineer, url: https://opportunities.columbia.edu/jobs/associate-ai-engineer . Job: " + job,
         resume
     )
-    
-    combined, matched, missing = hybrid_score(resume, job)
-    print("Hybrid score:", round(combined, 3))
-    print("Matched skills:", matched)
-    print("Missing skills:", missing)
+
+    # Test sponsorship-weighted final score
+    f, m, s, matched, missing = final_score(resume, job, "Columbia University")
+    print(f"\nColumbia -> Match: {round(m,3)}, Sponsor: {s}, Final: {round(f,3)}")
+    f, m, s, matched, missing = final_score(resume, job, "eClerx")
+    print(f"eClerx   -> Match: {round(m,3)}, Sponsor: {s}, Final: {round(f,3)}")

@@ -1,0 +1,7 @@
+anthropic
+sentence-transformers
+numpy
+scipy
+python-dotenv
+python-docx
+pypdf
