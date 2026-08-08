@@ -3,11 +3,30 @@ from dotenv import load_dotenv
 from anthropic import Anthropic
 from sentence_transformers import SentenceTransformer
 from database import save_job as db_save_job 
+from matcher import match_score
+from skills import SKILLS
 import numpy as np
 
 load_dotenv()
 client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 model_embed = SentenceTransformer("all-MiniLM-L6-v2")
+
+def skill_match(resume_text, job_description):
+    resume_lower = resume_text.lower()
+    job_lower = job_description.lower()
+
+    # Which skills does the JOB mention? (its requirements)
+    job_skills = [skill for skill in SKILLS if skill in job_lower]
+
+    if not job_skills:
+        return 0.0, [], []   # job mentioned none of our known skills
+
+    # Of those, which does the RESUME also have?
+    matched = [skill for skill in job_skills if skill in resume_lower]
+    missing = [skill for skill in job_skills if skill not in resume_lower]
+
+    score = len(matched) / len(job_skills)
+    return score, matched, missing
 
 def draft_tailored_bullets(resume_text, job_description):
     response = client.messages.create(
@@ -129,6 +148,12 @@ def run_agent(user_request, resume_text):
                 })
 
         messages.append({"role": "user", "content": tool_results})
+        
+def hybrid_score(resume_text, job_description, weight=0.6):
+    semantic = score_job(resume_text, job_description)
+    skill, matched, missing = skill_match(resume_text, job_description)
+    combined = (weight * semantic) + ((1 - weight) * skill)
+    return combined, matched, missing
 
 if __name__ == "__main__":
     from resume_reader import read_resume
@@ -138,6 +163,11 @@ if __name__ == "__main__":
 
     run_agent(
         "Score this job against my resume, and if it scores above 0.35, save it. "
-        "Company: eClerx, title: Junior AI Engineer, url: https://fa-ewji-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/job/82760 . Job: " + job,
+        "Company: Columbia University, title: Associate AI Engineer, url: https://opportunities.columbia.edu/jobs/associate-ai-engineer-columbia-university-medical-center-new-york-united-states?source=IND . Job: " + job,
         resume
     )
+    
+    combined, matched, missing = hybrid_score(resume, job)
+    print("Hybrid score:", round(combined, 3))
+    print("Matched skills:", matched)
+    print("Missing skills:", missing)
