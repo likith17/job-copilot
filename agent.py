@@ -7,6 +7,7 @@ import numpy as np
 load_dotenv()
 client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 model_embed = SentenceTransformer("all-MiniLM-L6-v2")
+
 def draft_tailored_bullets(resume_text, job_description):
     response = client.messages.create(
         model="claude-sonnet-4-6",
@@ -62,23 +63,46 @@ tools = [
 def run_agent(user_request, resume_text):
     messages = [{"role": "user", "content": user_request}]
 
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=2000,
-        system="You are a job-application assistant. When you need to use a tool, call it directly with the required inputs. Do not narrate what you're about to do.",
-        tools=tools,
-        messages=messages
-    )
+    for _ in range(5):   # turn cap: never loop more than 5 times
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=2000,
+            system="You are a job-application assistant. When you need to use a tool, call it directly with the required inputs. Do not narrate what you're about to do.",
+            tools=tools,
+            messages=messages
+        )
 
-    print("Stop reason:", response.stop_reason)
-    for block in response.content:
-        if block.type == "text":
-            print("Model says:", block.text)
-        elif block.type == "tool_use":
-            print("Model wants to call:", block.name)
-            print("With input:", block.input)
+        if response.stop_reason != "tool_use":
+            for block in response.content:
+                if block.type == "text":
+                    print("\nAgent:", block.text)
+            break
 
-    return response
+        messages.append({"role": "assistant", "content": response.content})
+
+        tool_results = []
+        for block in response.content:
+            if block.type == "tool_use":
+                print(f"\nThe agent wants to call: {block.name}")
+                approval = input("Approve? (yes/no): ").strip().lower()
+
+                if approval != "yes":
+                    result = "The user denied permission to run this tool."
+                    print("Denied.")
+                else:
+                    if block.name == "score_job":
+                        result = str(score_job(resume_text, block.input["job_description"]))
+                    elif block.name == "draft_tailored_bullets":
+                        result = draft_tailored_bullets(resume_text, block.input["job_description"])
+                    print("Done.")
+
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": result
+                })
+
+        messages.append({"role": "user", "content": tool_results})
 
 if __name__ == "__main__":
     from resume_reader import read_resume
