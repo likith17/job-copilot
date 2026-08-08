@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 from anthropic import Anthropic
 from sentence_transformers import SentenceTransformer
+from database import save_job as db_save_job 
 import numpy as np
 
 load_dotenv()
@@ -57,8 +58,24 @@ tools = [
             },
             "required": ["job_description"]
         }
+    },
+    {
+        "name": "save_job",
+        "description": "Save a scored job to the database for later ranking. Requires the job's company, title, url, and description, plus its match score.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "company": {"type": "string", "description": "Company name"},
+                "title": {"type": "string", "description": "Job title"},
+                "url": {"type": "string", "description": "Job posting URL"},
+                "job_description": {"type": "string", "description": "Full job posting text"},
+                "match_score": {"type": "number", "description": "The match score from score_job, between 0 and 1"}
+            },
+            "required": ["company", "title", "url", "job_description", "match_score"]
+        }
     }
 ]   
+
 
 def run_agent(user_request, resume_text):
     messages = [{"role": "user", "content": user_request}]
@@ -94,6 +111,15 @@ def run_agent(user_request, resume_text):
                         result = str(score_job(resume_text, block.input["job_description"]))
                     elif block.name == "draft_tailored_bullets":
                         result = draft_tailored_bullets(resume_text, block.input["job_description"])
+                    elif block.name == "save_job":
+                        db_save_job(
+                            block.input["company"],
+                            block.input["title"],
+                            block.input["url"],
+                            block.input["job_description"],
+                            block.input["match_score"]
+                        )
+                        result = "Job saved to database."
                     print("Done.")
 
                 tool_results.append({
@@ -110,4 +136,8 @@ if __name__ == "__main__":
     with open("job.txt", "r", encoding="utf-8") as f:
         job = f.read()
 
-    run_agent("Score this job against my resume: " + job, resume)
+    run_agent(
+        "Score this job against my resume, and if it scores above 0.35, save it. "
+        "Company: eClerx, title: Junior AI Engineer, url: https://fa-ewji-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/job/82760 . Job: " + job,
+        resume
+    )

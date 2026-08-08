@@ -1,77 +1,54 @@
-Position Information
+Job Summary
 
-About Fordham
+eClerx supports global financial institutions across trade support, financial crime compliance, client lifecycle, asset servicing, settlements & clearing, and data/document operations—often at large scale and under strict accuracy and compliance expectations. 
 
-Founded in 1841, Fordham is the Jesuit University of New York, offering an exceptional education distinguished by the Jesuit tradition to more than 16,000 students in its nine colleges and schools. It has residential campuses in the Bronx and Manhattan, a campus in West Harrison, N.Y., the Louis Calder Center Biological Field Station in Armonk, N.Y., and the London Centre in the United Kingdom.
+You’ll join a team building AI-powered tools (agentic workflows + GenAI capabilities) that help streamline operations, improve control effectiveness, and reduce manual effort—while remaining audit-ready and secure. 
 
-The University offers a comprehensive benefits package that includes medical, dental, and vision insurance; flexible spending accounts; retirement plans; life insurance; short and long-term disability; employee assistance program (EAP); tuition remission; and generous time off.
+Responsibilities
 
-Successful candidates should have a knowledge of and commitment to the goals of Jesuit Education.
+Build agentic & GenAI tools for Financial Markets use cases
+Develop agentic AI workflows that can plan, execute, and validate steps across operational processes (e.g., exception triage, document checks, workflow routing, and knowledge-assisted decisioning). 
+Build GenAI features such as summarization, classification, extraction, drafting, and Q&A for financial operations, with a focus on reliability and traceability. 
+Create RAG pipelines to ground LLM outputs in approved knowledge sources (policies, SOPs, regulatory artifacts, client documentation, historical cases).
+Engineer production-grade integrations
+Implement tool-calling / function-calling patterns so agents can safely interact with internal systems (case management, CRMs/ERPs, data services, document repositories) and produce structured outputs. 
+Build backend services and APIs that package AI capabilities into reusable components (internal tools and/or client-facing solutions).
+Write clean, maintainable code with strong engineering hygiene: unit tests, integration tests, code review participation, CI/CD readiness, and documentation.
+Quality, evaluation, and responsible deployment
+Design lightweight evaluation harnesses and test suites (golden datasets, regression tests, prompt/version tracking, and error analysis) to continuously improve accuracy and consistency.
+Implement guardrails and human-in-the-loop checkpoints where appropriate (especially for compliance-sensitive decisions). 
+Collaborate with domain SMEs (ops, compliance, risk) to translate requirements into measurable system behavior and acceptance criteria.
+Eligibility Requirements
 
-Title of Position AI/Machine Learning Engineer Position Number A11100 FLSA Exempt Scheduled Hours Per Week 35 Department Enterprise AI Campus Rose Hill, Lincoln Center Work Arrangement Hybrid Hybrid Policy: Please review the Hybrid Policy at www.fordham.edu/hybridpolicy. Position Summary
-
-Reporting to the Assistant Vice President of Enterprise AI, the AI/Machine Learning Engineer supports the advancement of the University's enterprise AI strategy by designing, building, and implementing practical artificial intelligence and machine learning solutions across the university ecosystem. This senior role serves as a technical implementation lead, contributing to a dual-path approach focused on developing targeted AI agents to support the student journey and building predictive models that help anticipate institutional needs.
-
-Working closely with the AVP, information technology, data governance, academic, and administrative stakeholders, the role translates institutional needs into secure, scalable, ethical, and privacy-compliant AI/ML solutions that improve campus operations, decision support, and student outcomes.
-
-Essential Functions
-
-Designs and deploys multi-agent systems capable of reasoning, tool-use, and autonomous problem-solving throughout the student success lifecycle (Recruitment, Learning and Development, Career Services, and Alumni Relations).
-
-Develops and maintains predictive models that provide actionable insights into areas such as student success, enrollment planning, operational efficiency, and early identification of students who may benefit from timely support.
-
-Identifies opportunities to improve university operations and student outcomes through practical AI/ML solutions, including workflow automation, decision-support tools, and AI-assisted administrative processes.
-
-Assists in the development of the technical roadmap for AI and machine learning implementation by assessing feasibility, documenting solution architecture, recommending scalable approaches, and supporting implementation priorities established by the AVP, with attention to ethics, privacy, security, FERPA/GDPR, and applicable governance standards.
-
-Builds and supports retrieval-augmented generation workflows, vector database integrations, and AI application components using approved platforms, institutional data sources, and responsible development practices.
-
-Serves as the liaison between university leadership (Administration, Deans, Faculty), technical AI/Data Science teams, and external vendors to align academic mission with technological execution.
-
-Essential Functions Note This list is not intended to be an exhaustive list.
-
-The University may assign additional related duties as necessary. Management Responsibilities Not responsible for supervision or oversight of others. Additional Functions
-
-Architects AI agents using RAG (Retrieval-Augmented Generation) pipelines, Model Context Protocol, and Operational data.
-
-Develops MLOps frameworks compliant with AI Governance policy.
-
-Required Qualifications: Education and Experience
-
-Master's in Computer Science, AI/Data science, Engineering, or a related field.
-
-Minimum of 5 years of experience in Machine Learning or Data Science, with a track record of deploying predictive models in a production environment.
-
-Required Qualifications: Knowledge and Skills
-
-Deep proficiency in Large Language Models (LLMs) and development & deployment of autonomous AI agents (for example, leveraging LangChain and CrewAI) to move beyond simple chat interfaces into scalable, agent-driven automation.
-
-Strong foundation in statistical modeling and classification algorithms.
-
-Proficiency in building RAG (Retrieval-Augmented Generation) pipelines and working with vector databases.
-
-Strong coding skills in Python and experience with MLOps frameworks to monitor model drift and performance.
-
+2+ years’ experience building production software with strong hands-on coding ownership.
+Strong Python programming skills with comfort working in a shared professional codebase; familiarity with Java or TypeScript/JavaScript is a plus
+Foundational understanding of LLMs: attention mechanisms, tokenization, context windows, and inference trade-offs
+Practical experience with LLM/GenAI development: prompt and context design, structured outputs, tool calling, and agentic workflows
+Familiarity with common engineering practices: Git, REST APIs, logging basics, and data handling (JSON, SQL)
+Ability to work in ambiguous problem spaces and iterate quickly with feedback from product and ops stakeholders
 Preferred Qualifications
+Personal projects, open-source contributions, or research on ML or applied ML
+Experience building RAG systems: chunking strategies, embedding models, vector stores (e.g. FAISS), and retrieval evaluation
+Hands-on experience with agentic orchestration frameworks such as LangGraph or LangChain-style state machines, deployed into real APIs or services
+Exposure to financial services operations (capital markets ops, KYC/ client lifecycle, AML/compliance, reconciliations, exceptions processing). 
+Experience with intelligent document processing pipelines: PDF parsing, schema mapping, and field validation
+Familiarity with deep learning frameworks (PyTorch, TensorFlow, or JAX) and strong applied ML fundamentals
+Knowledge of responsible AI concepts: privacy, explainability, and evaluation discipline
+Full-stack development experience (e.g. React, Next.js, FastAPI) is a meaningful bonus.  
+In the US, the target base salary for this role is $100,000-$120,000. Compensation is based on a range of factors that include relevant experience, knowledge, skills, other job-related qualifications, and geography. We expect the majority of candidates who are offered roles at our company to fall throughout the range based on these factors
 
-Ph.D degree in Computer Science, Engineering, or a related field.
+How to Apply
 
-Minimum Starting Salary 128,000 Maximum Starting Salary 160,000 Note Salary is commensurate with qualifications, experience, and skills. Is this a Union position? No
+Click "Apply Now" to submit your resume through our career site
+Be sure to include any relevant experience that aligns with the role.
+Qualified candidates will be contacted by a member of our recruitment team for next steps
+Please include your github and LinkedIn profile 
+ 
 
-Posting Detail Information
+About eClerx
 
-Posting Number A1108P Number of Vacancies 1 Start Date ASAP Posting Date 07/28/2026 Special Instructions EEO Statement
+eClerx is a leading provider of productized services, bringing together people, technology and domain expertise to amplify business results.​
 
-Fordham University is committed to excellence and welcomes candidates of all backgrounds.
+The firm provides business process management, automation, and analytics services to a number of Fortune 2000 enterprises, including some of the world’s leading financial services, communications, retail, fashion, media & entertainment, manufacturing, travel & leisure, and technology companies. Incorporated in 2000, eClerx is traded on both the Bombay and National Stock Exchanges of India. The firm employs more than 19,000 people across Australia, Canada, France, Germany, Switzerland, Egypt. India, Italy, Netherlands, Peru, Philippines, Singapore, Thailand, the UK, and the USA.
 
-Fordham University is an Equal Opportunity Employer. All qualified applicants will receive consideration for employment without regard to race, color, religion, sex, orientation, gender identity or expression, pregnancy, age, national origin, disability status, genetic information, protected veteran status, or any other characteristic protected by law.
-
-Physical Activity and Work Environment
-
-Physical Activity
-
-Sitting Often Repetitive Hand Motion (such as typing) Often Hearing, Listening, Talking Often Standing Seldom Walking Seldom Running Not Required Bending, Stooping, Kneeling, squatting, Crouching, Crawling Not Required Climbing stairs Not Required Climbing ladders Not Required Reaching overhead Not Required Pulling, pushing Not Required Shoveling Not Required Lifting - up to 20 pounds Not Required Lifting - up to 50 pounds Not Required Lifting - over 50 pounds Not Required
-
-Work Environment
-
-Work Environment Office Environment: Employees are protected from weather conditions or contaminants, but not necessarily occasional temperature changes.
+For more information, visit www.eclerx.com
