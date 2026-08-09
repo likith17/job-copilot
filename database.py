@@ -14,6 +14,7 @@ def create_table():
             url TEXT UNIQUE,
             description TEXT,
             match_score REAL,
+            final_score REAL,
             date_added TEXT
         )
     """)
@@ -23,13 +24,13 @@ def create_table():
 
 from datetime import date
 
-def save_job(company, title, url, description, match_score):
+def save_job(company, title, url, description, match_score, final_score):
     conn = get_connection()
     cursor = conn.cursor()
     try:
         cursor.execute(
-            "INSERT INTO jobs (company, title, url, description, match_score, date_added) VALUES (?, ?, ?, ?, ?, ?)",
-            (company, title, url, description, match_score, str(date.today()))
+            "INSERT INTO jobs (company, title, url, description, match_score, final_score, date_added) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (company, title, url, description, match_score, final_score, str(date.today()))
         )
         conn.commit()
         print(f"Saved: {title} at {company}")
@@ -40,7 +41,7 @@ def save_job(company, title, url, description, match_score):
 def get_jobs_ranked():
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT company, title, match_score, date_added FROM jobs ORDER BY match_score DESC")
+    cursor.execute("SELECT company, title, match_score, final_score, date_added FROM jobs ORDER BY final_score DESC")
     rows = cursor.fetchall()
     conn.close()
     return rows

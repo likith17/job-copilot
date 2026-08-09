@@ -137,14 +137,20 @@ def run_agent(user_request, resume_text):
                     elif block.name == "draft_tailored_bullets":
                         result = draft_tailored_bullets(resume_text, block.input["job_description"])
                     elif block.name == "save_job":
+                        f, m, s, matched, missing = final_score(
+                            resume_text,
+                            block.input["job_description"],
+                            block.input["company"]
+                        )
                         db_save_job(
                             block.input["company"],
                             block.input["title"],
                             block.input["url"],
                             block.input["job_description"],
-                            block.input["match_score"]
+                            m,   # raw match score
+                            f    # sponsorship-weighted final score
                         )
-                        result = "Job saved to database."
+                        result = f"Job saved. Match: {round(m,3)}, Final (sponsorship-weighted): {round(f,3)}"
                     print("Done.")
 
                 tool_results.append({
@@ -165,8 +171,8 @@ def final_score(resume_text, job_description, company):
     match, matched, missing = hybrid_score(resume_text, job_description)
     sponsors = sponsorship_signal(company)
 
-    # Non-sponsors aren't hidden, just ranked lower: keep 70% of their score.
-    sponsor_multiplier = 1.0 if sponsors == 1.0 else 0.7
+    # Non-sponsors aren't hidden, just ranked lower: keep 50% of their score.
+    sponsor_multiplier = 1.0 if sponsors == 1.0 else 0.5
     final = match * sponsor_multiplier
 
     return final, match, sponsors, matched, missing
