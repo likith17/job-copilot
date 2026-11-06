@@ -222,7 +222,7 @@ writing:
     en dashes). Correct grammar and spelling; concise, professional, confident.
 
   # Word range for the cover letter body; letters outside it are rewritten.
-  letter_words: [300, 450]
+  letter_words: [250, 450]
 
   # Tools and topics you studied in coursework (e.g. at VIT) that aren't on your
   # resume. The letter may mention these as coursework exposure, never as

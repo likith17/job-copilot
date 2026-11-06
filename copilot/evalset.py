@@ -99,6 +99,8 @@ def run(cfg, model=None, effort=None, workers=3, say=print, mode=None, finetuned
             "rule_rejects": sum(not r["why"].startswith("cosmetic") for r in report["rejected"]),
             "keyword_gain": cov["after"] - cov["before"],
             "flags": len(flags),
+            "flag_list": flags,
+            "resume_flags": len([f for f in flags if f not in report.get("letter_flags", [])]),
             "metrics_lost": len(master_metrics - tailor._metrics(text)),
             "agreement_with_you": round(sum(a for a in agree if a is not None) / max(1, sum(a is not None for a in agree)), 2)
             if any(a is not None for a in agree) else None,
@@ -119,6 +121,8 @@ def run(cfg, model=None, effort=None, workers=3, say=print, mode=None, finetuned
         "edits_per_job": round(sum(r["edits"] for r in ok) / max(len(ok), 1), 2),
         "keyword_gain_per_job": round(sum(r["keyword_gain"] for r in ok) / max(len(ok), 1), 2),
         "flags_per_job": round(sum(r["flags"] for r in ok) / max(len(ok), 1), 2),
+        "resume_flags_per_job": round(sum(r["resume_flags"] for r in ok) / max(len(ok), 1), 2),
+        "jobs_with_clean_resume": sum(r["resume_flags"] == 0 for r in ok),
         "cosmetic_rejects_per_job": round(sum(r["cosmetic_rejects"] for r in ok) / max(len(ok), 1), 2),
         "metrics_lost_total": sum(r["metrics_lost"] for r in ok),
         "agreement_with_you": round(sum(agree) / len(agree), 2) if agree else None,

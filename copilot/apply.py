@@ -72,12 +72,19 @@ def job_for_url(conn, url):
     return db.decode(row) if row else None
 
 
+def letter_flags(job):
+    """The review flags that belong to the cover letter and are still open."""
+    from_letter = (job.get("tailor_report") or {}).get("letter_flags") or []
+    return [f for f in job.get("tailor_flags") or [] if f in from_letter]
+
+
 def documents(job):
-    """{kind: Path} of the tailored files to upload; PDF preferred over DOCX."""
+    """{kind: Path} of the tailored files to upload; PDF preferred over DOCX.
+    A cover letter with open review flags stays home: unverified claims are never sent."""
     out = {}
     for kind, key in (("resume", "resume_path"), ("cover_letter", "cover_letter_path")):
         p = Path(job.get(key) or "")
-        if not job.get(key) or not p.exists():
+        if not job.get(key) or not p.exists() or (kind == "cover_letter" and letter_flags(job)):
             continue
         pdf = p.with_suffix(".pdf")
         out[kind] = pdf if pdf.exists() else p
@@ -88,7 +95,8 @@ def job_summary(job):
     docs = documents(job)
     return {"id": job["id"], "company": job["company"], "title": job["title"], "status": job.get("status"),
             "fit": job.get("tailored_fit") or job.get("fit_score"),
-            "flags": job.get("tailor_flags") or [], "sponsorship": job.get("sponsorship_status"),
+            "flags": [f for f in job.get("tailor_flags") or [] if f not in letter_flags(job)],
+            "letter_withheld": bool(letter_flags(job)), "sponsorship": job.get("sponsorship_status"),
             "documents": {k: p.name for k, p in docs.items()}}
 
 

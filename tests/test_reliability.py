@@ -91,9 +91,14 @@ def test_render_writes_headline_paragraph_and_bullets_in_place():
     ("Software Engineer II, AI Agents (NYC)", "Software Engineer"),
     ("Senior Machine Learning Engineer", "Machine Learning Engineer"),
     ("AI/ML Engineer - Platform", "AI/ML Engineer"),
+    ("Full-Stack Engineer, Growth", "Full-Stack Engineer"),
     ("Research Scientist", "Research Scientist"),
     ("Head of AI", "ML Engineer"),                  # not a plain technical role: keep the resume's own
     ("Staff Engineer", "ML Engineer"),              # nothing left but a level
+    ("Forward Deployed Engineer", "ML Engineer"),
+    ("University Grad Software Engineer 2027", "Software Engineer"),
+    ("Demo Experience Engineer", "ML Engineer"),
+    ("Machine Learning Engineer, Infrastructure", "Machine Learning Engineer"),
 ])
 def test_role_headline_never_claims_a_level(title, role):
     assert tailor.role_headline(title, "ML Engineer") == role
@@ -114,6 +119,67 @@ def test_header_falls_back_to_the_candidates_own_words(monkeypatch):
     tailor.tailor_header(master, resume, report, {"title": "Senior Applied Scientist, Ranking"}, {})
     assert resume["headline"] == "Applied Scientist"
     assert resume["summary"].startswith("Applied Scientist with 3 years")
+    assert resume["summary"].endswith("Hands-on experience with PyTorch.")    # on the resume, so safe to name
+
+
+def test_fallback_names_only_what_the_resume_supports():
+    master, _ = latex.parse(LAYOUT)
+    reqs = [{"need": "x", "keywords": ["PyTorch", "Reinforcement Learning", "Kubernetes"], "evidence": []}]
+    terms = tailor.summary_terms(reqs, master)
+    assert "Kubernetes" not in terms
+    resume = copy.deepcopy(master)
+    tailor.role_first(master, resume, "AI Engineer", terms)
+    assert resume["summary"].startswith("AI Engineer with 3 years")
+    assert "PyTorch and Reinforcement Learning" in resume["summary"] and "Kubernetes" not in resume["summary"]
+
+
+LETTER = ("Dear team,\n\nI built a routing system with YOLOv12. I also wrapped the inference service in a FastAPI "
+          "endpoint for low-latency access. I leveraged Python daily.\n\nI would welcome a conversation.")
+
+
+def test_flagged_sentences_are_cut_and_banned_words_swapped():
+    flag = 'unsupported claim: "wrapped the inference service in a FastAPI endpoint": not in the source'
+    out, dropped = tailor.drop_flagged(LETTER, [flag, "cover letter uses banned phrase: leveraged"])
+    assert dropped == 1 and "FastAPI" not in out and "I used Python daily." in out
+    assert out.startswith("Dear team,\n\nI built") and out.endswith("I would welcome a conversation.")
+
+
+def test_a_flag_that_matches_no_sentence_cuts_nothing():
+    out, dropped = tailor.drop_flagged(LETTER, ["unsupported claim: managed a team of forty engineers across Europe"])
+    assert dropped == 0 and "FastAPI" in out
+
+
+def test_too_many_flags_leave_the_letter_for_a_person():
+    flags = [f'unsupported claim: "routing system with YOLOv12 number {i}"' for i in range(6)]
+    assert tailor.drop_flagged(LETTER, flags)[1] == 0
+
+
+def test_scrub_keeps_the_letter_flagged_if_the_audit_still_objects(monkeypatch):
+    flag = 'unsupported claim: "wrapped the inference service in a FastAPI endpoint"'
+    monkeypatch.setattr(tailor, "letter_problems", lambda *a, **k: [])
+    monkeypatch.setattr(tailor, "audit_claims", lambda *a, **k: [])
+    clean, left = tailor.scrub_letter({}, LETTER, [flag], "", {})
+    assert "FastAPI" not in clean and left == []
+    monkeypatch.setattr(tailor, "audit_claims", lambda *a, **k: ["still wrong", "and this"])
+    same, left = tailor.scrub_letter({}, LETTER, [flag], "", {})
+    assert same == LETTER and left == [flag]
+
+
+def test_audit_flags_revert_edits_even_when_paraphrased():
+    master, _ = latex.parse(LAYOUT)
+    resume = copy.deepcopy(master)
+    resume["summary"] = "Software Engineer who built observability dashboards for latency."
+    edited = "Trained models with PyTorch on a large GPU cluster."
+    resume["experience"][0]["bullets"][1] = edited
+    report = {"accepted": [{"id": "E1.2", "before": "Trained models with PyTorch.", "after": edited}], "rejected": []}
+    left = tailor.revert_flagged(master, resume, report, [
+        "unsupported claim: built observability dashboards",         # the summary
+        'unsupported claim: "observability dashboards for latency"',  # the same summary, counted once
+        "unsupported claim: PyTorch training on large GPU cluster",   # a paraphrase of the bullet
+        "unsupported claim: managed a team of forty engineers",       # points at nothing: for a person
+    ])
+    assert resume["summary"] == master["summary"] and resume["experience"][0]["bullets"][1] == "Trained models with PyTorch."
+    assert report["accepted"] == [] and left == ["unsupported claim: managed a team of forty engineers"]
 
 
 def test_rate_limits_are_waited_out(monkeypatch):
@@ -195,6 +261,17 @@ def test_new_resume_leaves_filtered_jobs_and_prune_keeps_the_row(cfg):
     db.reset_for_rescore(conn)                      # a job with no text can't be re-filtered
     assert conn.execute("SELECT stage FROM jobs WHERE id = 'b'").fetchone()[0] == "filtered_out"
     assert conn.execute("SELECT stage FROM jobs WHERE id = 'a'").fetchone()[0] == "new"
+
+
+def test_closed_postings_are_not_graded(cfg, monkeypatch):
+    from copilot import grade, pipeline
+    conn = db.connect(cfg.db_path)
+    db.upsert_seen(conn, _job("closed"))
+    db.update(conn, "closed", stage="candidate", match_score=0.9, is_active=0)
+    conn.commit()
+    cfg.llm = {"tasks": {"grade": {"provider": "local", "model": "m"}}}
+    monkeypatch.setattr(grade, "grade", lambda *a: pytest.fail("graded a closed posting"))
+    pipeline._grade(cfg, conn, "resume", {"graded": 0, "errors": 0}, lambda *_: None)
 
 
 def test_grades_are_reused_for_the_same_resume_and_posting(cfg, monkeypatch):

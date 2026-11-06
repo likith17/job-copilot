@@ -107,6 +107,18 @@ def test_api_job_lookup_and_applied(server):
     assert db.find_answer(conn, "Why Zoox?")["answer"] == "Robotaxis."
 
 
+def test_flagged_cover_letter_is_never_uploaded(tmp_path):
+    resume, letter = tmp_path / "r.pdf", tmp_path / "l.pdf"
+    resume.write_bytes(b"r")
+    letter.write_bytes(b"l")
+    job = {"resume_path": str(resume), "cover_letter_path": str(letter), "tailor_flags": [], "tailor_report": {}}
+    assert set(apply.documents(job)) == {"resume", "cover_letter"}
+    flagged = {**job, "tailor_flags": ["unsupported claim: x"], "tailor_report": {"letter_flags": ["unsupported claim: x"]}}
+    assert set(apply.documents(flagged)) == {"resume"}
+    # Editing the letter clears its flags, and then it goes out.
+    assert set(apply.documents({**flagged, "tailor_flags": []})) == {"resume", "cover_letter"}
+
+
 def test_extension_profile_rules():
     import shutil
     import subprocess
@@ -130,6 +142,9 @@ def test_submit_gates():
                         ({"captcha": True}, "CAPTCHA"), ({"filled": []}, "resume not attached")]:
         assert any(why in w for w in autoapply.gates(job, {**clean, **change}, opts, 0)), why
     assert any("flag" in w for w in autoapply.gates({**job, "tailor_flags": ["x"]}, clean, opts, 0))
+    # A flagged cover letter isn't attached, so it doesn't hold the application back.
+    held = {**job, "tailor_flags": ["bad claim"], "tailor_report": {"letter_flags": ["bad claim"]}}
+    assert autoapply.gates(held, clean, opts, 0) == []
     assert any("fit" in w for w in autoapply.gates({**job, "tailored_fit": 80}, clean, opts, 0))
     assert any("sponsorship" in w for w in autoapply.gates({**job, "sponsorship_status": "no_sponsorship"}, clean, opts, 0))
     assert any("cap" in w for w in autoapply.gates(job, clean, opts, 15))

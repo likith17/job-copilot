@@ -25,7 +25,7 @@ import time
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from copilot import applyserver, db, llm
+from copilot import apply, applyserver, db, llm
 
 SCRIPT = Path(__file__).resolve().parent.parent / "extension" / "content.js"
 CONFIRMED = re.compile(r"thank you for (applying|your (application|interest))|application (has been |was )?"
@@ -71,8 +71,9 @@ def job_gates(job, opts, resume_sha=None):
         why.append(f"status is {job['status']}")
     if resume_sha and job.get("docs_resume_sha") != resume_sha:
         why.append("documents were built from an older resume")
-    if job.get("tailor_flags"):
-        why.append(f"documents have {len(job['tailor_flags'])} review flag(s)")
+    open_flags = [f for f in job.get("tailor_flags") or [] if f not in apply.letter_flags(job)]
+    if open_flags:       # a flagged letter isn't attached, so it can't hold the application back
+        why.append(f"resume has {len(open_flags)} review flag(s)")
     fit = job.get("tailored_fit") or job.get("fit_score") or 0
     if fit < opts["min_fit"]:
         why.append(f"fit {fit} < {opts['min_fit']}")

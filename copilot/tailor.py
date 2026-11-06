@@ -597,18 +597,28 @@ def apply_plan(master, plan, sections=ALL_SECTIONS):
     return resume, report
 
 
-_SENIORITY = re.compile(r"\b(senior|sr\.?|staff|principal|lead|junior|jr\.?|founding|mid[- ]level|entry[- ]level|"
-                        r"new grad(uate)?|early career|experienced|i{1,3}|iv|l[1-9])\b", re.I)
-_ROLE_NOUN = re.compile(r"\b(engineer|scientist|developer|researcher|programmer|analyst)\b", re.I)
+# Role names a headline may use, most specific first. A posting's own title often
+# isn't one ("Forward Deployed Engineer", "University Grad Engineer 2027"); those
+# fall back to the plain role inside it, or the resume's own headline.
+ROLES = ("Machine Learning Research Engineer", "Applied AI Engineer", "Applied ML Engineer", "AI/ML Engineer",
+         "ML/AI Engineer", "Machine Learning Engineer", "Machine Learning Scientist", "Computer Vision Engineer",
+         "Deep Learning Engineer", "Reinforcement Learning Engineer", "MLOps Engineer", "NLP Engineer",
+         "LLM Engineer", "ML Engineer", "AI Engineer", "AI Research Engineer", "Research Engineer",
+         "Applied Scientist", "Research Scientist", "Data Scientist", "Data Engineer",
+         "Backend Engineer", "Back-End Engineer", "Full Stack Engineer", "Full-Stack Engineer",
+         "Fullstack Engineer", "Infrastructure Engineer", "Platform Engineer", "Software Engineer",
+         "Software Developer", "Python Developer", "Backend Developer")
 
 
 def role_headline(job_title, current=""):
     """The job's role for the header and summary: "Software Engineer II, AI Agents (NYC)"
-    -> "Software Engineer". Levels are dropped so it never claims a seniority; anything
-    that isn't a plain technical role keeps the resume's own headline."""
-    role = re.split(r"\s*[,(|:]\s*|\s+[-\u2013\u2014/]\s+", job_title or "")[0]
-    role = " ".join(_SENIORITY.sub(" ", role).split()).strip(" -")
-    return role if _ROLE_NOUN.search(role) and 2 <= len(role.split()) <= 6 else current
+    -> "Software Engineer". Only known role names, so it never claims a level or an
+    odd internal title; anything else keeps the resume's own headline."""
+    title = " ".join((job_title or "").split()).lower()
+    for role in ROLES:
+        if re.search(rf"(?<![a-z]){re.escape(role.lower())}(?![a-z])", title):
+            return role
+    return current
 
 
 class SummaryFix(BaseModel):
@@ -669,10 +679,21 @@ def tailor_header(master, resume, report, job, settings, sections=ALL_SECTIONS):
     except llm.LLMError as exc:
         if isinstance(exc, llm.LLMUnavailable):
             raise
-    # The model didn't manage it: at least put the role first, in the candidate's own words.
+    role_first(master, resume, role, terms)
+
+
+def role_first(master, resume, role, terms=()):
+    """When no written summary passed: the candidate's own summary, opening with the
+    role and naming the posting's terms the resume already supports. Nothing to fact-check."""
     headline = master.get("headline", "")
-    if role and headline and master["summary"].startswith(headline):
+    if role and headline and not _mentions(_stems(resume["summary"]), role) and master["summary"].startswith(headline):
         resume["summary"] = role + master["summary"][len(headline):]
+    if summary_problem(resume["summary"], "", terms):
+        stems = _stems(resume["summary"])
+        fresh = [t for t in terms if not _mentions(stems, t)][:5]
+        if fresh:
+            listed = fresh[0] if len(fresh) == 1 else ", ".join(fresh[:-1]) + " and " + fresh[-1]
+            resume["summary"] = resume["summary"].rstrip() + f" Hands-on experience with {listed}."
 
 
 def posting_keywords(requirements):
@@ -741,28 +762,39 @@ def _quoted(flag):
     return head if 6 <= len(head) <= 120 else None
 
 
+def _points_at(flag, text):
+    """Does an audit flag refer to this text? Auditors paraphrase, so most of the
+    flagged words appearing is enough."""
+    phrase = _quoted(flag) or flag.removeprefix("unsupported claim:").strip()
+    if phrase.lower() in text.lower():
+        return True
+    wanted = _stems(phrase)
+    return bool(wanted) and len(wanted & _stems(text)) / len(wanted) >= 0.7
+
+
 def revert_flagged(master, resume, report, audit_flags):
-    """A flagged phrase inside an edited bullet reverts that bullet to the
-    original; flags that don't point at an edit are returned for a human."""
+    """A flag on an edited bullet reverts that bullet to the candidate's original;
+    one on the summary reverts the summary. Several flags on one edit count once.
+    Flags that don't point at any edit are returned for a human."""
     ids = bullet_ids(master)
-    leftover = []
+    leftover, reverted = [], []
     for f in audit_flags:
-        phrase = _quoted(f)
-        if phrase and phrase.lower() in resume["summary"].lower() and resume["summary"] != master["summary"]:
+        why = "claims audit: " + f.removeprefix("unsupported claim: ")
+        if resume["summary"] != master["summary"] and _points_at(f, resume["summary"]):
             # The summary is rewritten freely, so an unsupported claim there
             # sends it back to the candidate's own summary.
-            report["rejected"].append({"id": "summary", "proposed": resume["summary"],
-                                       "why": "claims audit: " + f.removeprefix("unsupported claim: ")})
+            report["rejected"].append({"id": "summary", "proposed": resume["summary"], "why": why})
+            reverted.append(resume["summary"])
             resume["summary"] = master["summary"]
             continue
-        hit = next((a for a in report["accepted"] if phrase and phrase.lower() in a["after"].lower()), None)
-        if not hit:
+        hit = next((a for a in report["accepted"] if _points_at(f, a["after"])), None)
+        if hit:
+            _replace_bullet(resume, ids[hit["id"]][0], hit["after"], hit["before"])
+            report["accepted"].remove(hit)
+            report["rejected"].append({"id": hit["id"], "proposed": hit["after"], "why": why})
+            reverted.append(hit["after"])
+        elif not any(_points_at(f, text) for text in reverted):
             leftover.append(f)
-            continue
-        _replace_bullet(resume, ids[hit["id"]][0], hit["after"], hit["before"])
-        report["accepted"].remove(hit)
-        report["rejected"].append({"id": hit["id"], "proposed": hit["after"],
-                                   "why": "claims audit: " + f.removeprefix("unsupported claim: ")})
     return leftover
 
 
@@ -858,6 +890,55 @@ def repair_letter(master, letter, flags, job_description, settings, trusted="", 
     new_flags = (letter_problems(master, fixed, job_description, trusted, writing)
                  + audit_claims(master, "", fixed, settings, trusted))
     return (fixed, new_flags) if len(new_flags) < len(flags) else (letter, flags)
+
+
+SWAPS = {"leveraged": "used", "leveraging": "using", "leverage": "use", "utilized": "used", "utilizing": "using",
+         "utilize": "use", "spearheaded": "led"}
+MAX_DROPPED_SENTENCES = 5
+
+
+def drop_flagged(letter, flags):
+    """Remove the sentence each unsupported-claim flag points at, and swap banned
+    words. A sentence is removed only when it clearly contains the flagged words;
+    after too many removals the letter is left for a person. Returns (letter, dropped)."""
+    for word, plain_word in SWAPS.items():
+        letter = re.sub(rf"\b{word}\b", plain_word, letter)
+        letter = re.sub(rf"\b{word.capitalize()}\b", plain_word.capitalize(), letter)
+    paragraphs = [re.split(r"(?<=[.!?])\s+", p) for p in letter.split("\n\n")]
+    claims = [f for f in flags if f.startswith("unsupported claim")]
+    if len(claims) > MAX_DROPPED_SENTENCES:
+        return letter, 0
+    dropped = 0
+    for flag in claims:
+        phrase = _quoted(flag) or flag.removeprefix("unsupported claim:").strip()
+        wanted = _stems(phrase)
+        best, best_share = None, 0.0
+        for para in paragraphs:
+            for k, sentence in enumerate(para):
+                share = len(wanted & _stems(sentence)) / max(len(wanted), 1)
+                if share > best_share:
+                    best, best_share = (para, k), share
+        if best and best_share >= 0.7:
+            del best[0][best[1]]
+            dropped += 1
+    return "\n\n".join(" ".join(p) for p in paragraphs if p), dropped
+
+
+def scrub_letter(master, letter, flags, job_description, settings, trusted="", writing=None):
+    """Last step for a letter still flagged: cut what can't be supported, then check
+    again, a few rounds. A letter that still fails isn't attached (apply.documents)."""
+    for _ in range(3):
+        if not flags:
+            break
+        cleaned, _dropped = drop_flagged(letter, flags)
+        if cleaned == letter:
+            break
+        new_flags = (letter_problems(master, cleaned, job_description, trusted, writing)
+                     + audit_claims(master, "", cleaned, settings, trusted))
+        if len(new_flags) >= len(flags):
+            break
+        letter, flags = cleaned, new_flags
+    return letter, flags
 
 
 def missing_points(letter, points):
@@ -1003,6 +1084,8 @@ def tailor(master: MasterResume, job, matched, missing, settings, base_letter=""
             # reverts that bullet, one in the summary reverts the summary.
             changed = "\n".join([a["after"] for a in report["accepted"]] + [resume["summary"]])
             flags = revert_flagged(master_d, resume, report, audit_claims(master_d, changed, "", check, trusted))
+            # The audit may have reverted the summary.
+            role_first(master_d, resume, report.get("role", ""), summary_terms(report["requirements"], master_d))
             hit_after, kws = keyword_coverage(resume_to_text(resume), report["requirements"])
             report["coverage"].update(after=len(hit_after), missing=[k for k in kws if k not in hit_after])
 
@@ -1031,7 +1114,10 @@ def tailor(master: MasterResume, job, matched, missing, settings, base_letter=""
     if letter_flags:
         letter, letter_flags = repair_letter(master_d, letter, letter_flags, job["description"],
                                              settings, trusted, writing)
+    if letter_flags:
+        letter, letter_flags = scrub_letter(master_d, letter, letter_flags, job["description"], check, trusted, writing)
     _, resume, changes, flags, report = best
+    report["letter_flags"] = letter_flags
     flags = flags + letter_flags
     best = (None, resume, letter, changes, flags, report)
 

@@ -72,8 +72,8 @@ def _run(cfg, *, fetch_jobs=True, use_llm=True, limit=None, say=print):
                 _grade(cfg, conn, resume_text, stats, say)
                 lap("AI grade")
                 # Never auto-rewrite documents for a job already applied to.
-                shortlist = sorted((j for j in db.jobs_in_stage(conn, "shortlisted")
-                                    if j["status"] not in ("Applied", "Interviewing", "Offer", "Rejected")),
+                shortlist = sorted((j for j in db.jobs_in_stage(conn, "shortlisted") if j["is_active"]
+                                    and j["status"] not in ("Applied", "Interviewing", "Offer", "Rejected")),
                                    key=lambda j: (j["fit_score"] or 0, j["match_score"] or 0), reverse=True)
                 stats["shortlisted"] = len(shortlist)
                 cap = limit if limit is not None else cfg.llm.get("max_tailor_per_run", 10)
@@ -213,7 +213,9 @@ def _score(cfg, conn, resume_text, stats, say):
 def _grade(cfg, conn, resume_text, stats, say):
     from copilot import grade
 
-    candidates = sorted(db.jobs_in_stage(conn, "candidate"), key=lambda j: j["match_score"], reverse=True)
+    # A closed posting can't be applied to: not worth a grade.
+    candidates = sorted((j for j in db.jobs_in_stage(conn, "candidate") if j["is_active"]),
+                        key=lambda j: j["match_score"], reverse=True)
     settings = llm.task_settings(cfg, "grade")
     min_fit = llm.min_fit(cfg)
     resume_key = db.text_key(resume_text)
