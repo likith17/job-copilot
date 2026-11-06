@@ -25,7 +25,8 @@ import time
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from copilot import apply, applyserver, db, llm
+from copilot import apply, applyserver, db, llm, runlock
+from copilot.config import ROOT
 
 SCRIPT = Path(__file__).resolve().parent.parent / "extension" / "content.js"
 CONFIRMED = re.compile(r"thank you for (applying|your (application|interest))|application (has been |was )?"
@@ -45,6 +46,17 @@ def settings(cfg):
     defaults = {"daily_cap": 15, "per_company_per_day": 2, "min_fit": 80, "per_run": 10, "browser": "chrome",
                 "wait_secs": 45, "auto_submit": False}
     return {**defaults, **(cfg.apply or {})}
+
+
+def set_auto_submit(on, path=None):
+    """Save the daily sending switch to config.yaml, keeping the file's comments."""
+    path = Path(path) if path else ROOT / "config.yaml"
+    text = path.read_text(encoding="utf-8")
+    new, n = re.subn(r"^(\s*auto_submit:\s*)(true|false)\b", lambda m: m.group(1) + ("true" if on else "false"),
+                     text, count=1, flags=re.M)
+    if not n:
+        raise ValueError(f"no apply.auto_submit setting in {path}")
+    path.write_text(new, encoding="utf-8")
 
 
 def stop_file(cfg):
@@ -187,8 +199,14 @@ def submit(page, wait_secs=25):
     return False, "no confirmation" + (f": {'; '.join(errors)}" if errors else "")
 
 
-def run(cfg, *, submit_ok=False, url=None, limit=None, unattended=False, say=print):
-    """Fill the top jobs. unattended: skip what can't pass anyway, and never wait for a person."""
+def run(cfg, *, submit_ok=False, url=None, limit=None, unattended=False, source="terminal", say=print):
+    """Fill the top jobs, one browser at a time. unattended: skip what can't pass
+    anyway, and never wait for a person."""
+    with runlock.hold(cfg.data_dir, source, name="apply"):
+        return _run(cfg, submit_ok, url, limit, unattended, say)
+
+
+def _run(cfg, submit_ok, url, limit, unattended, say):
     from playwright.sync_api import sync_playwright
     from copilot import tailor
 

@@ -27,8 +27,8 @@ class RunInProgress(Exception):
                          f"Wait for it to finish, then try again.")
 
 
-def _paths(data_dir):
-    return data_dir / "run.lock", data_dir / "run.lock.json"
+def _paths(data_dir, name="run"):
+    return data_dir / f"{name}.lock", data_dir / f"{name}.lock.json"
 
 
 def _try_lock(fh):
@@ -53,9 +53,9 @@ def _unlock(fh):
         pass
 
 
-def current(data_dir):
+def current(data_dir, name="run"):
     """Details of the run holding the lock, or None if nothing is running."""
-    lock_path, info_path = _paths(data_dir)
+    lock_path, info_path = _paths(data_dir, name)
     lock_path.touch(exist_ok=True)
     with open(lock_path, "r+b") as fh:
         if _try_lock(fh):
@@ -68,9 +68,10 @@ def current(data_dir):
 
 
 @contextmanager
-def hold(data_dir, source):
-    """Hold the run lock for the duration of the block, or raise RunInProgress."""
-    lock_path, info_path = _paths(data_dir)
+def hold(data_dir, source, name="run"):
+    """Hold a lock for the duration of the block, or raise RunInProgress. "run" covers
+    the pipeline and Generate; "apply" covers the browser the auto-apply runner opens."""
+    lock_path, info_path = _paths(data_dir, name)
     lock_path.touch(exist_ok=True)
     fh = open(lock_path, "r+b")
     if not _try_lock(fh):

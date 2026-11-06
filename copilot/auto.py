@@ -8,6 +8,7 @@ Sending is off until config.yaml says `apply: auto_submit: true`; until then the
 run stops after writing documents. To pause sending at any time, use the app's
 switch or create data/STOP_AUTO_APPLY. The digest of every run is in data/digests/.
 """
+import json
 import subprocess
 from datetime import datetime
 
@@ -76,6 +77,21 @@ def schedule(time_of_day, say=print):
               f"Register-ScheduledTask -TaskName '{TASK}' -Action $a -Trigger $t -Settings $s -Force | Out-Null")
     subprocess.run(["powershell", "-NoProfile", "-Command", script], check=True)
     say(f"Scheduled: {TASK} every day at {time_of_day}.")
+
+
+def schedule_status():
+    """{registered, next_run, last_run, last_result} of the daily task, read from Windows."""
+    script = (f"$t = Get-ScheduledTask -TaskName '{TASK}' -ErrorAction SilentlyContinue; "
+              "if ($t) { $i = $t | Get-ScheduledTaskInfo; @{ state = [string]$t.State; "
+              "next_run = $(if ($i.NextRunTime) { $i.NextRunTime.ToString('ddd MMM d, h:mm tt') }); "
+              "last_run = $(if ($i.LastRunTime -and $i.LastRunTime.Year -gt 2000) { $i.LastRunTime.ToString('ddd MMM d, h:mm tt') }); "
+              "last_result = $i.LastTaskResult } | ConvertTo-Json }")
+    try:
+        out = subprocess.run(["powershell", "-NoProfile", "-Command", script], capture_output=True, text=True, timeout=20)
+        info = json.loads(out.stdout) if out.stdout.strip() else None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return {"registered": None}
+    return {"registered": bool(info), **(info or {})}
 
 
 def unschedule(say=print):

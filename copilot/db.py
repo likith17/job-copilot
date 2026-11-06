@@ -461,6 +461,12 @@ def log_application(conn, job_id, url, ats, mode, outcome, filled=(), unfilled=(
     conn.commit()
 
 
+def confirmed_submissions(conn):
+    """Applications whose own page confirmed the submission (not ones marked by hand)."""
+    return conn.execute("""SELECT COUNT(*) FROM applications WHERE outcome = 'submitted'
+                           AND COALESCE(note, '') <> 'marked by hand'""").fetchone()[0]
+
+
 def company_applications_today(conn, company):
     day = datetime.now(timezone.utc).date().isoformat()
     return conn.execute("""SELECT COUNT(*) FROM applications a JOIN jobs j ON j.id = a.job_id

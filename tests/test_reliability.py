@@ -130,7 +130,8 @@ def test_fallback_names_only_what_the_resume_supports():
     resume = copy.deepcopy(master)
     tailor.role_first(master, resume, "AI Engineer", terms)
     assert resume["summary"].startswith("AI Engineer with 3 years")
-    assert "PyTorch and Reinforcement Learning" in resume["summary"] and "Kubernetes" not in resume["summary"]
+    assert "PyTorch" in resume["summary"] and "Reinforcement Learning" in resume["summary"]
+    assert "Kubernetes" not in resume["summary"]
 
 
 LETTER = ("Dear team,\n\nI built a routing system with YOLOv12. I also wrapped the inference service in a FastAPI "

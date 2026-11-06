@@ -61,16 +61,41 @@ def open_local(path):
 LOG_PATH = cfg.data_dir / "logs" / "background.log"
 
 
-def start_background(args):
-    """Runs and document generation live in their own process: clicking around or
-    refreshing this page can't stop them. Progress is read back from the log."""
-    LOG_PATH.parent.mkdir(exist_ok=True)
+APPLY_LOG = cfg.data_dir / "logs" / "apply.log"
+
+
+def start_background(args, log_path=LOG_PATH, marker="bg_started"):
+    """Runs, document generation and applying live in their own process: clicking
+    around or refreshing this page can't stop them. Progress is read back from the log."""
+    log_path.parent.mkdir(exist_ok=True)
     env = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
     flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-    with open(LOG_PATH, "w", encoding="utf-8") as log:
+    with open(log_path, "w", encoding="utf-8") as log:
         subprocess.Popen([sys.executable, "-m", "copilot", *args, "--source", "app"], cwd=str(Path(__file__).parent),
                          stdout=log, stderr=subprocess.STDOUT, env=env, creationflags=flags)
-    st.session_state["bg_started"] = time.time()
+    st.session_state[marker] = time.time()
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _schedule_status():
+    from copilot import auto
+    return auto.schedule_status()
+
+
+@st.fragment(run_every=3)
+def _apply_progress():
+    started = st.session_state.get("apply_started")
+    running = runlock.current(cfg.data_dir, "apply") is not None or (started and time.time() - started < 15)
+    lines = APPLY_LOG.read_text(encoding="utf-8", errors="replace").splitlines() if APPLY_LOG.exists() else []
+    if not running:
+        if started:
+            del st.session_state["apply_started"]
+            st.session_state["flash"] = ("info", "Applying finished. " + (lines[-1] if lines else ""))
+        st.rerun()      # the whole page: the buttons unlock
+    st.info("⏳ Browser is open. Review and submit there; each job is marked Applied when its page confirms. "
+            "Close the browser when you're done.")
+    for line in lines[-8:]:
+        st.caption(line)
 
 
 def generate(ids, status, instruction=""):
@@ -87,8 +112,7 @@ def _progress():
         if started:
             del st.session_state["bg_started"]
             st.session_state["flash"] = ("success", "Finished. Results are below; the log is in data/logs/.")
-            st.rerun()
-        return
+        st.rerun()      # the whole page: new results, and the buttons unlock
     lines = LOG_PATH.read_text(encoding="utf-8", errors="replace").splitlines() if LOG_PATH.exists() else []
     st.info("⏳ Working in the background. You can keep using the page, or close it; the work continues.")
     st.code("\n".join(lines[-12:]) or "Starting...", language=None)
@@ -748,24 +772,55 @@ with st.sidebar:
                     "guessed.\n\nOpen any Greenhouse, Lever or Ashby application: it fills itself and attaches "
                     "that job's tailored resume and cover letter. You review and click Submit; it's marked "
                     "Applied when the page confirms.")
-    auto_submit = st.checkbox("Submit the ones that need nothing from me",
-                              help="Only jobs with Ready documents (no flags), fit above apply.min_fit, the resume "
-                                   "attached, every answer from your profile or answer bank, and no CAPTCHA. "
-                                   "Everything else stays filled in its tab for you. Capped per day.")
-    if st.button("Prepare applications", width="stretch",
-                 help="Opens your top Ready jobs in a browser window, one tab each, fully filled."):
-        subprocess.Popen([sys.executable, "-m", "copilot", "apply"] + (["--submit"] if auto_submit else []),
-                         cwd=str(Path(__file__).parent))
-        st.toast("Opening the browser: applications are being filled.")
     from copilot import autoapply
     opts = autoapply.settings(cfg)
     paused = autoapply.stopped(cfg)
-    if st.toggle("Pause automatic sending", value=paused,
+    confirmed = db.confirmed_submissions(conn)
+    gates_help = (f"Only jobs with documents from your current resume and no resume flags, fit at least "
+                  f"{opts['min_fit']}, the resume attached, every answer from your profile or saved answers, and no "
+                  f"CAPTCHA, up to {opts['daily_cap']} a day. Everything else stays for you.")
+
+    applying = runlock.current(cfg.data_dir, "apply") is not None or "apply_started" in st.session_state
+    if applying:
+        _apply_progress()
+    how_many = st.number_input("How many jobs", min_value=1, max_value=25, value=3,
+                               help="Your top jobs by score, one browser tab each.")
+    # Nothing is sent automatically until one real application has been confirmed by its own page.
+    send_now = st.checkbox("Also submit the ones that need nothing from me", value=False,
+                           disabled=not confirmed or paused, help=gates_help)
+    if st.button("Prepare applications", width="stretch", disabled=applying,
+                 help="Opens your top jobs in a browser window, fully filled. Unless the box above is ticked, "
+                      "you review and click Submit yourself."):
+        args = ["apply", "-n", str(int(how_many))] + (["--submit"] if send_now and confirmed and not paused else [])
+        start_background(args, APPLY_LOG, "apply_started")
+        st.rerun()
+
+    st.subheader("Daily")
+    daily_on = st.toggle("Send automatically every day", value=opts["auto_submit"],
+                         disabled=not confirmed and not opts["auto_submit"], help=gates_help)
+    if daily_on != opts["auto_submit"]:
+        autoapply.set_auto_submit(daily_on)
+        st.rerun()
+    if not confirmed and not opts["auto_submit"]:
+        st.caption("🔒 Sending unlocks after your first confirmed application. Prepare some, review them, and click "
+                   "Submit yourself; the switches unlock once a page confirms.")
+    if st.toggle("Pause all sending", value=paused,
                  help="While on, nothing is submitted automatically, whatever the settings say.") != paused:
         autoapply.stop_file(cfg).touch() if not paused else autoapply.stop_file(cfg).unlink()
         st.rerun()
-    st.caption("Automatic sending is **" + ("paused" if paused else "on" if opts["auto_submit"] else "off") +
+    st.caption("Daily sending: **" + ("paused" if paused else "on" if opts["auto_submit"] else "off") +
                f"** (fit at least {opts['min_fit']}, up to {opts['daily_cap']} a day).")
+    schedule = _schedule_status()
+    if schedule["registered"]:
+        st.caption(f"Schedule: next run **{schedule.get('next_run') or 'not set'}**"
+                   + (f", last run {schedule['last_run']}" if schedule.get("last_run") else ""))
+        if schedule.get("last_run") and schedule.get("last_result") not in (0, 267009):      # ok / still running
+            st.warning(f"The last daily run failed (code {schedule['last_result']}). See the latest daily summary.")
+    elif schedule["registered"] is False:
+        st.caption("Schedule: **not set up**, so nothing runs by itself. In a terminal, run:")
+        st.code(".venv/Scripts/python -m copilot schedule --time 09:00", language="bash")
+    else:
+        st.caption("Schedule: couldn't read it from Windows.")
     digests = sorted((cfg.data_dir / "digests").glob("*.md")) if (cfg.data_dir / "digests").exists() else []
     if digests:
         with st.expander("Latest daily summary"):

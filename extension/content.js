@@ -512,7 +512,7 @@
     shadow.getElementById("fill").onclick = () => run();
     shadow.getElementById("close").onclick = () => shadow.host.remove();
     shadow.getElementById("applied").onclick = () => reportSubmitted({ job_id: state.job?.id, url: location.href, ats: ATS,
-      filled: state.filled.concat(state.drafts), unfilled: state.needs, answers: answersToSave() });
+      filled: state.filled.concat(state.drafts), unfilled: state.needs, answers: answersToSave(), note: "marked by hand" });
   }
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 

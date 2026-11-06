@@ -55,3 +55,12 @@ def test_lock_is_free_after_a_normal_run(tmp_path):
     assert runlock.current(tmp_path) is None
     with runlock.hold(tmp_path, "second"):
         pass
+
+
+def test_the_apply_lock_is_separate_from_the_run_lock(tmp_path):
+    with runlock.hold(tmp_path, "browser", name="apply"):
+        assert runlock.current(tmp_path, "apply")["source"] == "browser"
+        assert runlock.current(tmp_path) is None
+        with runlock.hold(tmp_path, "pipeline"):      # a pipeline run can happen while a browser is open
+            assert runlock.current(tmp_path)["source"] == "pipeline"
+    assert runlock.current(tmp_path, "apply") is None

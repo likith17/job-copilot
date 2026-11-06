@@ -119,6 +119,29 @@ def test_flagged_cover_letter_is_never_uploaded(tmp_path):
     assert set(apply.documents({**flagged, "tailor_flags": []})) == {"resume", "cover_letter"}
 
 
+def test_only_a_page_confirmation_unlocks_sending(cfg):
+    conn = db.connect(cfg.db_path)
+    assert db.confirmed_submissions(conn) == 0
+    db.log_application(conn, "j", "u", "lever", "extension", "submitted", note="marked by hand")
+    db.log_application(conn, "j", "u", "lever", "prepared", "needs_you", note="field empty")
+    assert db.confirmed_submissions(conn) == 0
+    db.log_application(conn, "j", "u", "lever", "prepared", "submitted", note="you submitted")
+    assert db.confirmed_submissions(conn) == 1
+
+
+def test_daily_switch_saves_to_config_and_keeps_comments(tmp_path):
+    from copilot import autoapply
+    path = tmp_path / "config.yaml"
+    path.write_text("apply:\n  min_fit: 80\n  # keep me\n  auto_submit: false  # a note\n", encoding="utf-8")
+    autoapply.set_auto_submit(True, path)
+    assert path.read_text(encoding="utf-8") == "apply:\n  min_fit: 80\n  # keep me\n  auto_submit: true  # a note\n"
+    autoapply.set_auto_submit(False, path)
+    assert "auto_submit: false  # a note" in path.read_text(encoding="utf-8")
+    path.write_text("apply: {}\n", encoding="utf-8")
+    with pytest.raises(ValueError):
+        autoapply.set_auto_submit(True, path)
+
+
 def test_extension_profile_rules():
     import shutil
     import subprocess
