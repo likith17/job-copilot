@@ -142,7 +142,8 @@ def r_answer(cfg, conn, q, body):
 
 def r_answers(cfg, conn, q, body):
     for a in body.get("answers", []):
-        if a.get("question") and a.get("answer"):
+        # "Why X?" answers are about one company: never reused for another.
+        if a.get("question") and a.get("answer") and not apply.is_motivation(a["question"]):
             db.save_answer(conn, a["question"], a["answer"], a.get("source", "you"), body.get("job_id"))
     return {"saved": len(body.get("answers", []))}
 

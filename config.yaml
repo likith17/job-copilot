@@ -58,6 +58,8 @@ llm:
     # Writing runs on open models, one focused call per bullet (see copilot/bullets.py).
     # Switch `model` to your own fine-tuned writer once `copilot eval` shows it wins.
     tailor: {provider: local, model: "gpt-oss:120b-cloud", mode: per_bullet, workers: 3}
+    # Answers to form questions ("Why this company?"), from your story, cover letter and resume.
+    answer: {provider: local, model: "gpt-oss:120b-cloud"}
     # Claude settings, for when credits are available:
     #   grade:       {provider: anthropic, model: claude-opus-5-5, effort: low}
     #   sponsorship: {provider: anthropic, model: claude-sonnet-4-6}
@@ -81,6 +83,9 @@ apply:
   # Off until a supervised pilot confirms real submissions work. true = `copilot auto`
   # sends what passes every gate; pause anytime from the app or with data/STOP_AUTO_APPLY.
   auto_submit: false
+  # AI-written answers (e.g. "Why this company?") that pass the fact-check against your
+  # resume and story. false = an application with one waits for you to read it.
+  send_ai_answers: false
 
 # ---- Writing: how resumes and cover letters are tailored ----
 # Style and focus only. The honesty rules always apply on top: nothing is

@@ -122,6 +122,46 @@ Use ONLY facts from the candidate's resume, profile, and the job posting below.
   "passionate", "leverage", "utilize", "cutting-edge". ASCII punctuation only.
 """
 
+MOTIVATION_RULES = """
+This is a motivation question ("why us", "why this role"). Answer it like this:
+- Name one or two specific things the POSTING says about the company: its mission,
+  product, customers, or the technical problem the team works on. Use only what the
+  posting says; never claim facts about the company from elsewhere.
+- Connect them to the candidate's own goals and interests, from their story and
+  cover letter, and to one or two concrete things they built (from the resume).
+- 3-5 sentences, 80-150 words. Sincere and specific, not flattering.
+"""
+
+# "Why Anthropic?", "What interests you about this role?", "Why do you want to join us?"
+MOTIVATION = re.compile(r"^\s*why\b|\bwhy (do|are|would|this|our|us|join|work|apply)|interest(ed|s)? (you )?(in|about)|"
+                        r"excit|motivat|drawn to|appeal|what (attracts|draws)", re.I)
+
+
+def is_motivation(question):
+    """Company-specific: drafted fresh for each posting, never reused from another company."""
+    return bool(MOTIVATION.search(question or ""))
+
+
+def story_path(cfg):
+    return cfg.data_dir / "inputs" / "story.md"
+
+
+def read_story(cfg):
+    """Your own words about goals and motivation (app: Autofill info -> Your story)."""
+    p = story_path(cfg)
+    return p.read_text(encoding="utf-8").strip() if p.exists() else ""
+
+
+def _check_draft(master, text, settings, trusted):
+    """Fact-check a draft against the resume and your own words; cut what can't be
+    supported. Returns (text, remaining flags)."""
+    flags = tailor.audit_claims(master, "", text, settings, trusted)
+    if flags:
+        cut, _ = tailor.drop_flagged(text, flags)
+        if cut != text and len(cut.split()) >= 25:
+            text, flags = cut, tailor.audit_claims(master, "", cut, settings, trusted)
+    return text, flags
+
 
 def answer_question(cfg, conn, question, job=None, kind="text", options=None, settings=None, draft=True,
                     required=None):
@@ -139,7 +179,8 @@ def answer_question(cfg, conn, question, job=None, kind="text", options=None, se
     for key, value in profile["custom_answers"].items():
         if key.lower() in q and value not in (None, ""):
             return {"answer": str(value), "source": "profile", "note": f"custom_answers: {key}"}
-    saved = db.find_answer(conn, question)
+    motivation = is_motivation(question)
+    saved = None if motivation else db.find_answer(conn, question)
     if saved:
         if not saved["answer"].strip():
             return {"answer": "", "source": "", "note": "you chose to skip this question"}
@@ -151,20 +192,31 @@ def answer_question(cfg, conn, question, job=None, kind="text", options=None, se
     if settings is None:
         settings = llm.preflight(llm.task_settings(cfg, "answer" if "answer" in (cfg.llm.get("tasks") or {})
                                                    else "tailor"), say=lambda *_: None)
-    resume = tailor.resume_to_text(tailor.load_or_build_master(cfg, inputs.read_text(cfg.resume), log=lambda *_: None))
+    master = tailor.load_or_build_master(cfg, inputs.read_text(cfg.resume), log=lambda *_: None).model_dump()
+    resume = tailor.resume_to_text(master)
+    story = read_story(cfg)
+    letter = inputs.read_text(cfg.cover_letter) if cfg.cover_letter else ""
     facts = {k: profile.get(k) for k in ("location", "current_company", "current_title", "years_experience",
                                           "work_authorization", "start_date", "willing_to_relocate",
                                           "open_to_remote", "open_to_hybrid", "open_to_onsite", "education",
                                           "certifications", "languages")}
     user = (f"QUESTION ({kind} field): {question}\n\nCANDIDATE PROFILE:\n{yaml.safe_dump(facts, sort_keys=False)}"
-            f"\nRESUME:\n{resume}")
+            + (f"\nTHE CANDIDATE'S STORY, IN THEIR OWN WORDS:\n{story}\n" if story else "")
+            + (f"\nTHE CANDIDATE'S OWN COVER LETTER:\n{letter[:4000]}\n" if letter else "")
+            + f"\nRESUME:\n{resume}")
     if job:
-        user += f"\n\nJOB: {job['company']} | {job['title']}\nPOSTING:\n{(job.get('description') or '')[:6000]}"
-    out, _ = llm.parse(settings, [{"type": "text", "text": ANSWER_SYSTEM}], user, Answer, max_tokens=4000)
+        user += f"\n\nJOB: {job['company']} | {job['title']}\nPOSTING:\n{(job.get('description') or '')[:8000]}"
+    system = ANSWER_SYSTEM + (MOTIVATION_RULES if motivation else "")
+    out, _ = llm.parse(settings, [{"type": "text", "text": system}], user, Answer, max_tokens=4000)
     if out.needs_user or not out.answer.strip():
         return unanswered(out.reason)
     text = tailor.plain(out.answer.strip())
-    banned = tailor.banned_phrases(text)
-    if banned:
-        return {"answer": text, "source": "draft", "note": f"review: uses {', '.join(banned)}"}
-    return {"answer": text, "source": "draft", "note": out.reason}
+    for word, plain_word in tailor.SWAPS.items():
+        text = re.sub(rf"\b{word}\b", plain_word, text)
+    # Your own words are trusted sources for the fact-check, like the resume.
+    trusted = "\n\n".join(filter(None, [story, letter, yaml.safe_dump(facts, sort_keys=False)]))
+    text, flags = _check_draft(master, text, {**settings, "effort": "low"}, trusted)
+    if flags or tailor.banned_phrases(text):
+        return {"answer": text, "source": "draft", "checked": False,
+                "note": "review: " + "; ".join(flags[:2] or tailor.banned_phrases(text))}
+    return {"answer": text, "source": "draft", "checked": True, "note": "checked against your resume and story"}

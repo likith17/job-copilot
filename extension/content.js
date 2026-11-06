@@ -60,8 +60,10 @@
     // Walk up to the question's container and take its question text.
     let node = el.parentElement;
     for (let i = 0; i < 7 && node; i++, node = node.parentElement) {
+      // Skip option labels ("Male", "Yes") that point at a radio or checkbox: they aren't the question.
       const q = [...node.querySelectorAll(QUESTION_TEXT)].find((l) => !l.contains(el)
-        && !l.querySelector("input, select, textarea") && textOf(l).length > 1);
+        && !l.querySelector("input, select, textarea") && textOf(l).length > 1
+        && !(l.htmlFor && document.getElementById(l.htmlFor)?.matches("input[type=radio], input[type=checkbox]")));
       if (q) return textOf(q);
     }
     return clean(el.getAttribute("aria-label") || el.placeholder || el.name || "");
@@ -408,8 +410,12 @@
           return;
         }
         if (ok) {
-          const item = { label: f.label, value: a.answer, source: a.source };
-          if (a.source === "draft") { state.drafts.push(item); mark(f, "#f9ab00", "AI draft: review before submitting"); }
+          const item = { label: f.label, value: a.answer, source: a.source, checked: !!a.checked };
+          if (a.source === "draft") {
+            state.drafts.push(item);
+            mark(f, "#f9ab00", a.checked ? "AI answer, fact-checked against your resume: read it before submitting"
+                                         : `AI draft: ${a.note || "review before submitting"}`);
+          }
           else state.filled.push(item);
           return;
         }

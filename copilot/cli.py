@@ -81,6 +81,7 @@ def main(argv=None):
     p_apply.add_argument("--submit", action="store_true", help="submit the ones that pass every gate")
     p_apply.add_argument("--url", help="fill this one application page")
     p_apply.add_argument("-n", type=int, help="how many jobs (default apply.per_run)")
+    p_apply.add_argument("--job", action="append", help="this job id (repeatable) instead of the top jobs")
     p_apply.add_argument("--source", default="terminal", help=argparse.SUPPRESS)
 
     args = ap.parse_args(argv)
@@ -143,7 +144,7 @@ def main(argv=None):
         from copilot import autoapply
         try:
             autoapply.run(inputs.apply(cfg), submit_ok=args.submit, url=args.url, limit=args.n,
-                          source=args.source, say=say)
+                          job_ids=args.job, source=args.source, say=say)
         except runlock.RunInProgress:
             sys.exit("Applications are already open in another browser window. Finish there first.")
         return

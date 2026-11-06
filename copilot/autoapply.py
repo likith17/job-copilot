@@ -44,19 +44,23 @@ window.__copilotBridge = (path, method, body, binary) =>
 
 def settings(cfg):
     defaults = {"daily_cap": 15, "per_company_per_day": 2, "min_fit": 80, "per_run": 10, "browser": "chrome",
-                "wait_secs": 45, "auto_submit": False}
+                "wait_secs": 45, "auto_submit": False, "send_ai_answers": False}
     return {**defaults, **(cfg.apply or {})}
 
 
-def set_auto_submit(on, path=None):
-    """Save the daily sending switch to config.yaml, keeping the file's comments."""
+def set_apply_flag(name, on, path=None):
+    """Save an on/off apply setting to config.yaml, keeping the file's comments."""
     path = Path(path) if path else ROOT / "config.yaml"
     text = path.read_text(encoding="utf-8")
-    new, n = re.subn(r"^(\s*auto_submit:\s*)(true|false)\b", lambda m: m.group(1) + ("true" if on else "false"),
+    new, n = re.subn(rf"^(\s*{name}:\s*)(true|false)\b", lambda m: m.group(1) + ("true" if on else "false"),
                      text, count=1, flags=re.M)
     if not n:
-        raise ValueError(f"no apply.auto_submit setting in {path}")
+        raise ValueError(f"no apply.{name} setting in {path}")
     path.write_text(new, encoding="utf-8")
+
+
+def set_auto_submit(on, path=None):
+    set_apply_flag("auto_submit", on, path)
 
 
 def stop_file(cfg):
@@ -101,8 +105,12 @@ def gates(job, state, opts, submitted_today, resume_sha=None, company_today=0):
     why = job_gates(job, opts, resume_sha)
     if not any(f["source"] == "documents" and f.get("kind") == "resume" for f in state.get("filled", [])):
         why.append("resume not attached")
-    if state.get("drafts"):
-        why.append(f"{len(state['drafts'])} AI-drafted answer(s) need your review")
+    drafts = state.get("drafts") or []
+    unchecked = [d for d in drafts if not d.get("checked")]
+    if unchecked:
+        why.append(f"{len(unchecked)} AI-drafted answer(s) need your review")
+    elif drafts and not opts.get("send_ai_answers"):
+        why.append(f"{len(drafts)} AI answer(s) passed the fact-check; sending them is off (apply.send_ai_answers)")
     if state.get("needs"):
         why.append(f"{len(state['needs'])} field(s) need you: " + "; ".join(state["needs"][:3]))
     if state.get("errors"):
@@ -199,14 +207,14 @@ def submit(page, wait_secs=25):
     return False, "no confirmation" + (f": {'; '.join(errors)}" if errors else "")
 
 
-def run(cfg, *, submit_ok=False, url=None, limit=None, unattended=False, source="terminal", say=print):
-    """Fill the top jobs, one browser at a time. unattended: skip what can't pass
-    anyway, and never wait for a person."""
+def run(cfg, *, submit_ok=False, url=None, limit=None, unattended=False, job_ids=None, source="terminal", say=print):
+    """Fill the top jobs (or the ones in job_ids), one browser at a time. unattended:
+    skip what can't pass anyway, and never wait for a person."""
     with runlock.hold(cfg.data_dir, source, name="apply"):
-        return _run(cfg, submit_ok, url, limit, unattended, say)
+        return _run(cfg, submit_ok, url, limit, unattended, say, job_ids)
 
 
-def _run(cfg, submit_ok, url, limit, unattended, say):
+def _run(cfg, submit_ok, url, limit, unattended, say, job_ids=None):
     from playwright.sync_api import sync_playwright
     from copilot import tailor
 
@@ -214,10 +222,23 @@ def _run(cfg, submit_ok, url, limit, unattended, say):
     conn = db.connect(cfg.db_path)
     resume_sha = tailor.file_sha(cfg.resume)
     wanted = limit or opts["per_run"]
-    if unattended:
-        jobs = [j for j in queue(conn, cfg, 10_000) if not job_gates(j, opts, resume_sha)][:wanted]
+    if url:
+        jobs = [None]
     else:
-        jobs = [None] if url else queue(conn, cfg, wanted)
+        if job_ids:
+            rows = (conn.execute("SELECT * FROM jobs WHERE id = ?", (j,)).fetchone() for j in job_ids)
+            pool = [db.decode(r) for r in rows if r and r["resume_path"]]
+        else:
+            pool = queue(conn, cfg, 10_000)
+        # Never upload documents from an older resume, or apply twice.
+        stale = {"documents were built from an older resume", "status is Applied", "status is Interviewing",
+                 "status is Offer", "status is Rejected", "status is Skipped"}
+        ok = [j for j in pool if not (stale & set(job_gates(j, opts, resume_sha)))]
+        for j in pool:
+            if j not in ok:
+                say(f"Skipped {j['company']}: {'; '.join(stale & set(job_gates(j, opts, resume_sha)))}. "
+                    "Regenerate its documents first.")
+        jobs = [j for j in ok if not (unattended and job_gates(j, opts, resume_sha))][:wanted if not job_ids else None]
     if not jobs:
         say("No jobs ready to apply to. Run the pipeline or generate documents first.")
         return []

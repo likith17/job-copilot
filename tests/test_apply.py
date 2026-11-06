@@ -98,13 +98,13 @@ def test_api_job_lookup_and_applied(server):
     req = urllib.request.Request(f"http://127.0.0.1:{port}/api/applied", method="POST", headers={**h, "Content-Type": "application/json"},
                                  data=json.dumps({"job_id": "lever:zoox:e8a190f0-7a89-4c11-a6a0-452ff6234749", "ats": "lever",
                                                   "filled": [{"label": "Email", "value": "x", "source": "profile"}],
-                                                  "answers": [{"question": "Why Zoox?", "answer": "Robotaxis."}]}).encode())
+                                                  "answers": [{"question": "Earliest start date?", "answer": "Immediately"}]}).encode())
     with urllib.request.urlopen(req) as r:
         assert r.status == 200
     conn = db.connect(cfg.db_path)
     assert conn.execute("SELECT status, applied_at FROM jobs WHERE source='lever'").fetchone()["status"] == "Applied"
     assert conn.execute("SELECT outcome FROM applications").fetchone()["outcome"] == "submitted"
-    assert db.find_answer(conn, "Why Zoox?")["answer"] == "Robotaxis."
+    assert db.find_answer(conn, "Earliest start date?")["answer"] == "Immediately"
 
 
 def test_flagged_cover_letter_is_never_uploaded(tmp_path):
@@ -140,6 +140,52 @@ def test_daily_switch_saves_to_config_and_keeps_comments(tmp_path):
     path.write_text("apply: {}\n", encoding="utf-8")
     with pytest.raises(ValueError):
         autoapply.set_auto_submit(True, path)
+
+
+def test_drafts_use_the_real_resume_story_and_letter(cfg, monkeypatch):
+    """No stand-in for the resume: this runs the same path as a live form."""
+    from copilot import llm
+    tex = (__import__("pathlib").Path(__file__).parent / "fixtures_resume.tex")
+    cfg.resume = tex
+    apply.story_path(cfg).parent.mkdir(parents=True, exist_ok=True)
+    apply.story_path(cfg).write_text("I want to build AI systems that help people in emergencies.", encoding="utf-8")
+    monkeypatch.setattr(apply, "load_profile", lambda c: {"custom_answers": {}})
+    seen = {}
+
+    def fake_parse(settings, system, user, schema, max_tokens=0):
+        seen.setdefault("calls", []).append((system[0]["text"], user))
+        if schema is apply.Answer:
+            return apply.Answer(answer="I want to work on safety because I built routing for emergencies.",
+                                needs_user=False, reason="r"), None
+        return schema(unsupported=[]), None
+    monkeypatch.setattr(llm, "parse", fake_parse)
+    job = {"company": "Acme", "title": "Engineer", "description": "Acme builds safe AI for hospitals."}
+    out = apply.answer_question(cfg, db.connect(cfg.db_path), "Why Acme?", job, "textarea", None, settings={"type": "x"})
+    assert out["source"] == "draft" and out["checked"] is True
+    system, user = seen["calls"][0]
+    assert "motivation question" in system and "help people in emergencies" in user and "Acme builds safe AI" in user
+
+
+def test_motivation_answers_are_never_reused_for_another_company(cfg):
+    assert apply.is_motivation("Why Anthropic?") and apply.is_motivation("What interests you about this role?")
+    assert not apply.is_motivation("Are you authorized to work in the US?")
+    from copilot import applyserver
+    conn = db.connect(cfg.db_path)
+    applyserver.r_answers(cfg, conn, {}, {"answers": [{"question": "Why Anthropic?", "answer": "Because of Claude."},
+                                                      {"question": "Preferred office?", "answer": "NYC"}]})
+    assert db.find_answer(conn, "Why Anthropic?") is None and db.find_answer(conn, "Preferred office?")["answer"] == "NYC"
+
+
+def test_checked_ai_answers_go_out_only_when_allowed():
+    from copilot import autoapply
+    job = {"tailor_flags": [], "tailored_fit": 90, "sponsorship_status": "sponsors"}
+    state = {"filled": [{"label": "Attach", "value": "r", "source": "documents", "kind": "resume"}],
+             "drafts": [{"label": "Why us?", "checked": True}], "needs": [], "errors": [], "captcha": False}
+    opts = {"min_fit": 85, "daily_cap": 15}
+    assert any("sending them is off" in w for w in autoapply.gates(job, state, opts, 0))
+    assert autoapply.gates(job, state, {**opts, "send_ai_answers": True}, 0) == []
+    unchecked = {**state, "drafts": [{"label": "Why us?", "checked": False}]}
+    assert any("need your review" in w for w in autoapply.gates(job, unchecked, {**opts, "send_ai_answers": True}, 0))
 
 
 def test_extension_profile_rules():
