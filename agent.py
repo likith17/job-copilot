@@ -1,10 +1,13 @@
 import os
+import re
+from functools import lru_cache
 from dotenv import load_dotenv
 from anthropic import Anthropic
 from sentence_transformers import SentenceTransformer
 from database import save_job as db_save_job 
 from matcher import match_score
 from skills import SKILLS
+from jd_sponsorship import extract_sponsorship
 from sponsors import sponsorship_signal
 import numpy as np
 
@@ -12,19 +15,23 @@ load_dotenv()
 client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 model_embed = SentenceTransformer("all-MiniLM-L6-v2")
 
+def _mentions(text_lower, skill):
+    # Whole-term match: plain `in` let "rag" hit "storage" and "aws" hit "laws".
+    return re.search(rf"(?<![\w+#]){re.escape(skill)}(?![\w+#])", text_lower) is not None
+
 def skill_match(resume_text, job_description):
     resume_lower = resume_text.lower()
     job_lower = job_description.lower()
 
     # Which skills does the JOB mention? (its requirements)
-    job_skills = [skill for skill in SKILLS if skill in job_lower]
+    job_skills = [skill for skill in SKILLS if _mentions(job_lower, skill)]
 
     if not job_skills:
         return 0.0, [], []   # job mentioned none of our known skills
 
     # Of those, which does the RESUME also have?
-    matched = [skill for skill in job_skills if skill in resume_lower]
-    missing = [skill for skill in job_skills if skill not in resume_lower]
+    matched = [skill for skill in job_skills if _mentions(resume_lower, skill)]
+    missing = [skill for skill in job_skills if not _mentions(resume_lower, skill)]
 
     score = len(matched) / len(job_skills)
     return score, matched, missing
@@ -50,11 +57,27 @@ def draft_tailored_bullets(resume_text, job_description):
     )
     return response.content[0].text
 
+embed_cache = None     # set by copilot.scoring: embeddings kept on disk between runs
+
+@lru_cache(maxsize=256)
+def embed(text, words_per_chunk=150):
+    stored = embed_cache.get(text) if embed_cache else None
+    if stored is not None:
+        return stored
+    # The model reads at most 256 tokens and silently drops the rest, which was
+    # 16% of the resume and only the "About us" intro of most postings. Embed
+    # ~150-word chunks (under the limit) and average them so the whole text counts.
+    words = text.split()
+    chunks = [" ".join(words[i:i + words_per_chunk])
+              for i in range(0, max(len(words), 1), words_per_chunk)]
+    vec = model_embed.encode(chunks, normalize_embeddings=True).mean(axis=0)
+    vec = vec / np.linalg.norm(vec)
+    if embed_cache:
+        embed_cache.put(text, vec)
+    return vec
+
 def score_job(resume_text, job_description):
-    resume_vec = model_embed.encode(resume_text)
-    job_vec = model_embed.encode(job_description)
-    score = np.dot(resume_vec, job_vec) / (np.linalg.norm(resume_vec) * np.linalg.norm(job_vec))
-    return float(score)
+    return float(np.dot(embed(resume_text), embed(job_description)))
 
 tools = [
     {
@@ -137,7 +160,7 @@ def run_agent(user_request, resume_text):
                     elif block.name == "draft_tailored_bullets":
                         result = draft_tailored_bullets(resume_text, block.input["job_description"])
                     elif block.name == "save_job":
-                        f, m, s, matched, missing = final_score(
+                        r = final_score(
                             resume_text,
                             block.input["job_description"],
                             block.input["company"]
@@ -147,11 +170,14 @@ def run_agent(user_request, resume_text):
                             block.input["title"],
                             block.input["url"],
                             block.input["job_description"],
-                            m,   # raw match score
-                            f    # sponsorship-weighted final score
+                            r["match"],   # raw match score
+                            r["final"]    # sponsorship-weighted final score
                         )
-                        result = f"Job saved. Match: {round(m,3)}, Final (sponsorship-weighted): {round(f,3)}"
-                    print("Done.")
+                        result = (
+                            f"Job saved. Match: {round(r['match'], 3)}, "
+                            f"Final: {round(r['final'], 3)} "
+                            f"(sponsorship basis: {r['basis']})"
+                        )
 
                 tool_results.append({
                     "type": "tool_result",
@@ -167,21 +193,44 @@ def hybrid_score(resume_text, job_description, weight=0.6):
     combined = (weight * semantic) + ((1 - weight) * skill)
     return combined, matched, missing
 
-def final_score(resume_text, job_description, company):
+def final_score(resume_text, job_description, company, jd_result=None):
     match, matched, missing = hybrid_score(resume_text, job_description)
-    sponsors = sponsorship_signal(company)
 
-    # Non-sponsors aren't hidden, just ranked lower: keep 50% of their score.
-    sponsor_multiplier = 1.0 if sponsors == 1.0 else 0.5
-    final = match * sponsor_multiplier
+    if jd_result is None:
+        jd_result = extract_sponsorship(job_description)
 
-    return final, match, sponsors, matched, missing
+    status = jd_result["status"]
+
+    # An unverifiable rejection quote is not trustworthy evidence.
+    if status == "no_sponsorship" and not jd_result["verified"]:
+        status = "not_mentioned"
+
+    on_list = sponsorship_signal(company) == 1.0
+
+    if status == "sponsors":
+        basis, multiplier = "posting says sponsors", 1.0
+    elif status == "no_sponsorship":
+        basis, multiplier = "posting rules it out", 0.3
+    elif on_list:
+        basis, multiplier = "employer has sponsored before", 1.0
+    else:
+        basis, multiplier = "unknown", 0.9
+
+    return {
+        "final": match * multiplier,
+        "match": match,
+        "matched": matched,
+        "missing": missing,
+        "multiplier": multiplier,
+        "basis": basis,
+        "jd": jd_result,
+    }
 
 if __name__ == "__main__":
     from resume_reader import read_resume
     resume = read_resume("resume.pdf")
-    with open("job.txt", "r", encoding="utf-8") as f:
-        job = f.read()
+    with open("job.txt", "r", encoding="utf-8") as jd_file:
+        job = jd_file.read()
 
     run_agent(
         "Score this job against my resume, and if it scores above 0.35, save it. "
@@ -189,8 +238,15 @@ if __name__ == "__main__":
         resume
     )
 
-    # Test sponsorship-weighted final score
-    f, m, s, matched, missing = final_score(resume, job, "Columbia University")
-    print(f"\nColumbia -> Match: {round(m,3)}, Sponsor: {s}, Final: {round(f,3)}")
-    f, m, s, matched, missing = final_score(resume, job, "eClerx")
-    print(f"eClerx   -> Match: {round(m,3)}, Sponsor: {s}, Final: {round(f,3)}")
+    # Extract the posting's sponsorship signal once, then reuse it.
+    jd_result = extract_sponsorship(job)
+    print(f"\nPosting sponsorship signal: {jd_result['status']} "
+          f"(verified={jd_result['verified']})")
+    if jd_result["evidence"]:
+        print(f"Evidence: {jd_result['evidence']}")
+
+    for company in ["Columbia University", "eClerx"]:
+        r = final_score(resume, job, company, jd_result=jd_result)
+        print(f"\n{company}")
+        print(f"  Match: {round(r['match'], 3)}  Final: {round(r['final'], 3)}")
+        print(f"  Basis: {r['basis']} ({r['multiplier']}x)")

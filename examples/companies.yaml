@@ -1,0 +1,42 @@
+companies:
+  - name: Airbnb
+    ats: greenhouse
+    identifier: airbnb
+  - name: Datadog
+    ats: greenhouse
+    identifier: datadog
+  - name: Duolingo
+    ats: greenhouse
+    identifier: duolingo
+  - name: Coinbase
+    ats: greenhouse
+    identifier: coinbase
+  - name: GitLab
+    ats: greenhouse
+    identifier: gitlab
+  - name: Stripe
+    ats: greenhouse
+    identifier: stripe
+  - name: OpenAI
+    ats: ashby
+    identifier: openai
+  - name: Linear
+    ats: ashby
+    identifier: linear
+  - name: Notion
+    ats: ashby
+    identifier: notion
+  - name: Figma
+    ats: ashby
+    identifier: figma
+  - name: Anthropic
+    ats: ashby
+    identifier: anthropic
+  - name: Plaid
+    ats: lever
+    identifier: plaid
+  # Generic fallback example (requires URL)
+  # - name: My Startup
+  #   ats: generic
+  #   identifier: mystartup
+  #   url: https://mystartup.com/careers

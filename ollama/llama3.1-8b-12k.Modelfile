@@ -1,0 +1,3 @@
+FROM llama3.1:8b
+# Ollama defaults to a 4K context and silently drops the start of longer prompts.
+PARAMETER num_ctx 12288

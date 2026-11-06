@@ -1,0 +1,4 @@
+FROM qwen3:8b
+# Ollama defaults to a 4K context and silently drops the start of longer prompts.
+# Grading and tailoring prompts reach ~10K tokens; 12K still fits an 8 GB GPU.
+PARAMETER num_ctx 12288

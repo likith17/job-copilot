@@ -1,0 +1,37 @@
+Jane Doe
+jane.doe@example.com | +1 555-0100 | San Francisco, CA
+github.com/janedoe | linkedin.com/in/janedoe
+
+SUMMARY
+Senior Software Engineer with 5+ years of experience building scalable backend systems.
+Passionate about distributed systems, Python, and cloud infrastructure. Seeking roles in backend/platform engineering.
+
+EXPERIENCE
+
+Senior Software Engineer - TechCorp, San Francisco, CA (2021-Present)
+- Designed and implemented microservices architecture using Python, FastAPI, and Docker serving 2M+ requests/day
+- Led migration to AWS (EC2, S3, RDS, Lambda) reducing infra cost by 30%
+- Built CI/CD pipelines with Jenkins and Terraform
+- Mentored 3 junior engineers
+- Tech stack: Python, Go, AWS, Docker, Kubernetes, PostgreSQL, Redis, Kafka
+
+Software Engineer - StartupXYZ (2019-2021)
+- Developed REST APIs in Django and Flask
+- Implemented real-time features with WebSockets and Redis
+- Optimized PostgreSQL queries improving latency by 40%
+
+SKILLS
+Languages: Python, Go, Java, JavaScript, TypeScript, SQL
+Backend: Django, Flask, FastAPI, Node.js, REST, GraphQL, gRPC
+Cloud: AWS (EC2, S3, Lambda, RDS), GCP, Docker, Kubernetes, Terraform
+Databases: PostgreSQL, MySQL, MongoDB, Redis, Elasticsearch
+Tools: Git, Jenkins, Linux, Agile, System Design
+ML/Data: Pandas, NumPy, Airflow (basic), Spark (basic)
+
+EDUCATION
+B.S. Computer Science - UC Berkeley (2019)
+GPA: 3.8/4.0
+
+PROJECTS
+- Open-source contributor to FastAPI
+- Built personal finance tracker with React + FastAPI, 500+ GitHub stars

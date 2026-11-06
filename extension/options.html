@@ -1,0 +1,27 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Job Copilot Autofill</title>
+  <style>
+    body { font: 14px/1.5 system-ui, sans-serif; width: 340px; padding: 12px; color: #202124; }
+    label { display: block; margin: 10px 0 4px; font-weight: 600; }
+    input[type=text], input[type=number] { width: 100%; box-sizing: border-box; padding: 6px; }
+    button { margin-top: 12px; padding: 6px 14px; }
+    .m { color: #5f6368; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h3>Job Copilot Autofill</h3>
+  <p class="m">Run the app (or <code>python -m copilot serve</code>), then paste the token it shows.
+    The token is in <code>data/extension_token.txt</code>.</p>
+  <label for="token">Token</label>
+  <input id="token" type="text" autocomplete="off">
+  <label for="port">Port</label>
+  <input id="port" type="number" value="8765">
+  <label><input id="autofill" type="checkbox"> Fill forms as soon as they open</label>
+  <button id="save">Save and test</button>
+  <p id="status" class="m"></p>
+  <script src="options.js"></script>
+</body>
+</html>

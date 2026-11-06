@@ -1,0 +1,72 @@
+# Your application profile: the answers every application form asks for.
+#
+#   copy profile.example.yaml profile.yaml      (profile.yaml is git-ignored)
+#
+# The autofill extension fills forms from this file and from your tailored
+# documents. Anything left blank (null or "") is never guessed: the field is
+# highlighted on the form for you to answer yourself.
+#
+# Name, email, phone, location and links default to your resume when blank here.
+
+first_name: ""
+last_name: ""
+preferred_name: ""
+pronouns: ""                 # e.g. he/him, she/her, they/them; blank = leave the field for you
+email: ""
+phone: ""
+location: ""                 # "City, ST", as forms usually want it
+address: {street: "", city: "", state: "", postal_code: "", country: "United States"}
+linkedin: ""
+github: ""
+portfolio: ""
+
+current_company: ""
+current_title: ""
+years_experience: null
+
+education:                   # most recent first
+  - {school: "", degree: "", discipline: "", start_year: null, end_year: null, gpa: ""}
+
+# ---- Work authorization: answered exactly as you set it, never inferred ----
+work_authorization:
+  authorized_us: null            # true/false: legally authorized to work in the US now?
+  requires_sponsorship: null     # true/false: need sponsorship now OR in the future?
+  visa_status: ""                # e.g. "F-1 OPT (STEM extension eligible)"
+  citizenship: ""
+
+# ---- Common questions ----
+start_date: ""                   # e.g. "Immediately" or "2 weeks notice"
+willing_to_relocate: null        # true/false
+open_to_remote: true
+open_to_hybrid: true
+open_to_onsite: true
+salary_expectation: ""           # e.g. "$130,000 - $160,000", blank = leave for you
+over_18: true
+how_did_you_hear: "Company careers page"
+previously_employed_at: []       # companies you've worked for (answers "have you worked here before?")
+
+# ---- More answers forms ask for (leave blank if they don't apply) ----
+referral:                        # someone who referred you to the job you're applying for now
+  name: ""
+  email: ""
+  relationship: ""               # e.g. "former colleague"
+certifications: []               # e.g. [{name: "AWS Certified Machine Learning - Specialty", issuer: "AWS", year: 2025}]
+languages: []                    # e.g. [English, Hindi, Telugu]
+clearance: ""                    # security clearance, e.g. "None"
+
+# ---- Voluntary self-identification (EEO). "Decline" picks the decline option. ----
+eeo:
+  gender: "Decline"
+  race: "Decline"
+  hispanic_latino: "Decline"
+  veteran: "Decline"
+  disability: "Decline"
+  sexual_orientation: "Decline"
+  transgender: "Decline"
+
+# ---- Anything else: "words in the question": answer ----
+# Any form question containing these words (case-insensitive) gets this answer.
+# Unanswered questions also show up in the app (Autofill info -> Questions forms
+# asked): answer them there once and every later form reuses your answer.
+custom_answers:
+  # "are you open to working in-office": "Yes"

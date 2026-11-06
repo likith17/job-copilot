@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JobMatcher Dashboard</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: #1e293b;
+            --card2: #334155;
+            --text: #e2e8f0;
+            --muted: #94a3b8;
+            --accent: #38bdf8;
+            --accent2: #818cf8;
+            --success: #22c55e;
+            --warning: #eab308;
+            --border: #334155;
+            --score-high: #22c55e;
+            --score-med: #eab308;
+            --score-low: #ef4444;
+        }
+        * { box-sizing: border-box; margin:0; padding:0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+        }
+        header {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 1.5rem;
+            position: sticky;
+            top:0;
+            z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        header h1 { font-size: 1.4rem; font-weight: 700; background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        header .subtitle { color: var(--muted); font-size: 0.85rem; margin-left: 0.75rem; }
+        .layout { display: grid; grid-template-columns: 360px 1fr; min-height: calc(100vh - 64px); }
+        @media (max-width: 1100px) { .layout { grid-template-columns: 1fr; } }
+        .sidebar {
+            background: var(--card);
+            border-right: 1px solid var(--border);
+            padding: 1.2rem;
+            overflow-y: auto;
+            max-height: calc(100vh - 64px);
+            position: sticky;
+            top: 64px;
+        }
+        .main { padding: 1.2rem; overflow-y: auto; }
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        .card h3 { font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 0.8rem; display:flex; align-items:center; gap:0.5rem;}
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.4rem;
+            padding: 0.55rem 1rem;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--card2);
+            color: var(--text);
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.15s;
+            text-decoration: none;
+        }
+        .btn:hover { background: #475569; transform: translateY(-1px); }
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            border: none;
+            color: #0f172a;
+            font-weight: 600;
+        }
+        .btn-primary:hover { filter: brightness(1.1); }
+        .btn-success { background: var(--success); color: white; border:none; }
+        .btn-warning { background: #854d0e; color: #fef9c3; border:1px solid #eab308; }
+        .btn-danger { background: #7f1d1d; color: #fecaca; border:1px solid #ef4444; }
+        .btn:disabled { opacity:0.5; cursor:not-allowed; transform:none; }
+        .btn-sm { padding:0.3rem 0.6rem; font-size:0.8rem; }
+        .input, .select, textarea {
+            width: 100%;
+            padding: 0.55rem 0.75rem;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: #0f172a;
+            color: var(--text);
+            font-size: 0.9rem;
+            margin-bottom: 0.6rem;
+        }
+        textarea { min-height: 100px; font-family: monospace; font-size: 0.8rem; }
+        .input:focus, .select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+        .row { display: grid; grid-template-columns: 1fr 1fr; gap:0.6rem; }
+        .status {
+            padding: 0.6rem 0.8rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            margin-bottom: 0.8rem;
+            border:1px solid var(--border);
+        }
+        .status.idle { background: #1e293b; color: var(--muted); }
+        .status.crawling { background: #1e3a5f; color: var(--accent); border-color: var(--accent); }
+        .status.done { background: #14532d; color: #86efac; border-color: var(--success); }
+        .status.error { background: #7f1d1d; color: #fca5a5; border-color: #ef4444; }
+        .filters {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap:0.7rem;
+            margin-bottom: 1rem;
+        }
+        .filter-group label { font-size:0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing:0.05em; display:block; margin-bottom:0.25rem; }
+        table { width:100%; border-collapse: collapse; font-size:0.88rem; }
+        thead { position: sticky; top:0; background: var(--card); z-index: 10; }
+        th {
+            text-align:left;
+            padding:0.7rem 0.6rem;
+            border-bottom:2px solid var(--border);
+            color: var(--muted);
+            font-weight: 600;
+            font-size:0.75rem;
+            text-transform: uppercase;
+            letter-spacing:0.04em;
+            cursor: pointer;
+            user-select:none;
+        }
+        th:hover { color: var(--text); }
+        td { padding:0.7rem 0.6rem; border-bottom:1px solid #1e293b; vertical-align: top; }
+        tr:hover { background: #1e293b; }
+        .score {
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            width:38px; height:38px;
+            border-radius:50%;
+            font-weight:700;
+            font-size:0.85rem;
+        }
+        .score-high { background: rgba(34,197,94,0.15); color: var(--score-high); border:1px solid rgba(34,197,94,0.3); }
+        .score-med { background: rgba(234,179,8,0.15); color: var(--score-med); border:1px solid rgba(234,179,8,0.3); }
+        .score-low { background: rgba(239,68,68,0.15); color: var(--score-low); border:1px solid rgba(239,68,68,0.3); }
+        .tag {
+            display:inline-block;
+            background: #0f172a;
+            border:1px solid var(--border);
+            border-radius:20px;
+            padding:0.15rem 0.5rem;
+            font-size:0.7rem;
+            margin:0.1rem;
+            color: var(--muted);
+        }
+        .tag.match { background: rgba(56,189,248,0.1); color: var(--accent); border-color: rgba(56,189,248,0.3); }
+        .company { font-weight:600; color: var(--text); }
+        .title { font-weight:500; }
+        .location { color: var(--muted); font-size:0.8rem; }
+        .explanation { color: var(--muted); font-size:0.8rem; max-width: 340px; }
+        .link { color: var(--accent); text-decoration:none; }
+        .link:hover { text-decoration:underline; }
+        .badge { display:inline-block; padding:0.15rem 0.45rem; border-radius:4px; font-size:0.7rem; background: var(--card2); color: var(--muted); }
+        .badge.status-Interested { background: #1e3a8a; color: #93c5fd; }
+        .badge.status-Applied { background: #854d0e; color: #fde68a; }
+        .badge.status-Interviewing { background: #6b21a8; color: #e9d5ff; }
+        .badge.status-Offer { background: #14532d; color: #86efac; }
+        .badge.status-Rejected { background: #7f1d1d; color: #fca5a5; }
+        .toolbar { display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:1rem; align-items:center; justify-content: space-between; }
+        .toolbar-left { display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center; }
+        .stats { display:flex; flex-direction:column; gap:0.3rem; font-size:0.85rem; color: var(--muted); margin-bottom:1rem; }
+        .stats b { color: var(--text); }
+        .progress-bar { height:4px; background: var(--card2); border-radius:2px; overflow:hidden; margin-bottom:1rem; }
+        .progress-bar div { height:100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width 0.3s; }
+        .hidden { display:none; }
+        .file-drop { border:2px dashed var(--border); border-radius:8px; padding:1rem; text-align:center; color: var(--muted); cursor:pointer; transition: all 0.15s; }
+        .file-drop:hover { border-color: var(--accent); color: var(--text); }
+        .small { font-size:0.75rem; color: var(--muted); }
+        .tabs { display:flex; gap:0.3rem; margin-bottom:1rem; border-bottom:1px solid var(--border); padding-bottom:0; }
+        .tab {
+            padding:0.6rem 1.2rem;
+            cursor:pointer;
+            border-radius:8px 8px 0 0;
+            font-size:0.9rem;
+            font-weight:500;
+            color: var(--muted);
+            border:1px solid transparent;
+            border-bottom:none;
+            background: transparent;
+        }
+        .tab.active { background: var(--card); color: var(--text); border-color: var(--border); border-bottom:1px solid var(--card); margin-bottom:-1px; }
+        .tab:hover { color: var(--text); background: #1e293b; }
+        .tab-panel { display:none; }
+        .tab-panel.active { display:block; }
+        .notes-input { min-height:60px; }
+        .bookmark-actions { display:flex; gap:0.3rem; flex-wrap:wrap; }
+    </style>
+</head>
+<body>
+<header>
+    <div style="display:flex; align-items:center;">
+        <h1>▦ JobMatcher</h1>
+        <span class="subtitle">Crawl • Rank • Bookmark • Track</span>
+    </div>
+    <div style="display:flex; gap:0.5rem; align-items:center;">
+        <span class="small" id="stateStatus">idle</span>
+        <button class="btn" onclick="resetAll()">Reset</button>
+    </div>
+</header>
+
+<div class="layout">
+    <aside class="sidebar">
+        <div class="card">
+            <h3>📄 Resume</h3>
+            <div id="resumeDrop" class="file-drop" onclick="document.getElementById('resumeFile').click()">
+                <div>Click to upload resume</div>
+                <div class="small">PDF, DOCX, TXT, MD</div>
+            </div>
+            <input type="file" id="resumeFile" class="hidden" accept=".pdf,.docx,.txt,.md" onchange="uploadResume(this)">
+            <div id="resumeInfo" class="hidden" style="margin-top:0.8rem; font-size:0.85rem;"></div>
+        </div>
+
+        <div class="card">
+            <h3>🏢 Companies</h3>
+            <div class="row" style="margin-bottom:0.5rem;">
+                <button class="btn" onclick="loadExampleCompanies()">Load examples</button>
+                <button class="btn" onclick="document.getElementById('companiesFile').click()">Upload JSON/YAML</button>
+            </div>
+            <input type="file" id="companiesFile" class="hidden" accept=".json,.yaml,.yml" onchange="uploadCompaniesFile(this)">
+            <label class="small">Or paste companies JSON:</label>
+            <textarea id="companiesJson" placeholder='{"companies": [{"name":"Airbnb","ats":"greenhouse","identifier":"airbnb"}]}'></textarea>
+            <button class="btn" style="width:100%" onclick="saveCompaniesJson()">Save companies JSON</button>
+            <div id="companiesInfo" class="hidden" style="margin-top:0.8rem; font-size:0.85rem;"></div>
+        </div>
+
+        <div class="card">
+            <h3>⚙️ Crawl Options</h3>
+            <div class="row">
+                <div>
+                    <label class="small">Max workers</label>
+                    <input class="input" type="number" id="maxWorkers" value="8" min="1" max="20">
+                </div>
+                <div>
+                    <label class="small">Timeout (s)</label>
+                    <input class="input" type="number" id="timeout" value="15" min="5" max="60">
+                </div>
+            </div>
+            <div class="row">
+                <div>
+                    <label class="small">Retries</label>
+                    <input class="input" type="number" id="retries" value="2" min="0" max="5">
+                </div>
+                <div>
+                    <label class="small">Dedup</label>
+                    <select class="select" id="dedupStrategy">
+                        <option value="smart" selected>smart</option>
+                        <option value="strict">strict</option>
+                        <option value="url">url</option>
+                        <option value="aggressive">aggressive</option>
+                        <option value="none">none</option>
+                    </select>
+                </div>
+            </div>
+            <button class="btn-primary btn" style="width:100%; margin-top:0.6rem;" id="crawlBtn" onclick="startCrawl()">🚀 Start Crawl & Rank</button>
+            <div id="crawlStatus" class="status idle" style="margin-top:0.8rem;">Idle – upload resume & companies first</div>
+            <div id="progressBar" class="progress-bar hidden"><div style="width:0%"></div></div>
+        </div>
+
+        <div class="card">
+            <h3>📊 Stats</h3>
+            <div id="stats" class="small">No data yet<br>Upload resume, set companies, start crawl</div>
+            <div id="bookmarkStats" class="small" style="margin-top:0.6rem; padding-top:0.6rem; border-top:1px solid var(--border);"></div>
+        </div>
+
+        <div class="card">
+            <h3>🔖 Tracking</h3>
+            <div class="small" style="margin-bottom:0.5rem;">Bookmarks persist after restart at <code>~/.jobmatcher/bookmarks.json</code></div>
+            <div class="row">
+                <button class="btn" onclick="exportBookmarksCSV()">Export bookmarks CSV</button>
+                <button class="btn" onclick="fetchBookmarks()">Refresh bookmarks</button>
+            </div>
+        </div>
+    </aside>
+
+    <main class="main">
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('jobs')">🔍 Ranked Jobs</div>
+            <div class="tab" onclick="switchTab('bookmarks')">🔖 Bookmarked (<span id="bookmarkCountTab">0</span>)</div>
+        </div>
+
+        <!-- JOBS TAB -->
+        <div id="tab-jobs" class="tab-panel active">
+            <div class="card">
+                <h3>🔍 Browse & Filter Ranked Jobs</h3>
+                <div class="filters">
+                    <div class="filter-group">
+                        <label>Search</label>
+                        <input class="input" id="searchInput" placeholder="Title, company, skills..." oninput="applyFilters()">
+                    </div>
+                    <div class="filter-group">
+                        <label>Min score</label>
+                        <input class="input" type="range" id="minScore" min="0" max="100" value="0" oninput="this.nextElementSibling.textContent=this.value; applyFilters()">
+                        <span class="small" style="margin-left:0.3rem;">0</span>
+                    </div>
+                    <div class="filter-group">
+                        <label>Company</label>
+                        <input class="input" id="filterCompany" placeholder="e.g. Airbnb" oninput="applyFilters()">
+                    </div>
+                    <div class="filter-group">
+                        <label>Location</label>
+                        <input class="input" id="filterLocation" placeholder="e.g. Remote" oninput="applyFilters()">
+                    </div>
+                    <div class="filter-group">
+                        <label>Keyword</label>
+                        <input class="input" id="filterKeyword" placeholder="e.g. Python" oninput="applyFilters()">
+                    </div>
+                    <div class="filter-group">
+                        <label>Title contains</label>
+                        <input class="input" id="filterTitle" placeholder="e.g. Senior" oninput="applyFilters()">
+                    </div>
+                    <div class="filter-group">
+                        <label>Source</label>
+                        <select class="select" id="filterSource" onchange="applyFilters()">
+                            <option value="">All</option>
+                            <option value="greenhouse">Greenhouse</option>
+                            <option value="lever">Lever</option>
+                            <option value="ashby">Ashby</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Sort by</label>
+                        <div class="row">
+                            <select class="select" id="sortBy" onchange="applyFilters()">
+                                <option value="score" selected>Score</option>
+                                <option value="company">Company</option>
+                                <option value="title">Title</option>
+                                <option value="location">Location</option>
+                            </select>
+                            <select class="select" id="sortOrder" onchange="applyFilters()">
+                                <option value="desc" selected>Desc</option>
+                                <option value="asc">Asc</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="filter-group">
+                        <label>Options</label>
+                        <label style="display:flex; align-items:center; gap:0.4rem; font-size:0.85rem; text-transform:none; color:var(--text);"><input type="checkbox" id="remoteOnly" onchange="applyFilters()"> Remote only</label>
+                    </div>
+                </div>
+
+                <div class="toolbar">
+                    <div class="toolbar-left">
+                        <div class="stats" id="filterStats" style="margin:0;">0 jobs</div>
+                    </div>
+                    <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+                        <button class="btn" onclick="clearFilters()">Clear</button>
+                        <button class="btn" onclick="exportCSV(false)">Export view CSV</button>
+                        <button class="btn" onclick="exportCSV(true)">Server CSV</button>
+                        <button class="btn" onclick="exportJSON()">JSON</button>
+                    </div>
+                </div>
+
+                <div style="overflow-x:auto; max-height:65vh; overflow-y:auto; border:1px solid var(--border); border-radius:8px;">
+                    <table id="jobsTable">
+                        <thead>
+                            <tr>
+                                <th onclick="setSort('score')">Score</th>
+                                <th onclick="setSort('company')">Company</th>
+                                <th onclick="setSort('title')">Title</th>
+                                <th onclick="setSort('location')">Location</th>
+                                <th>Source</th>
+                                <th>Matched</th>
+                                <th>Explanation</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="jobsTbody">
+                            <tr><td colspan="8" style="text-align:center; padding:2rem; color:var(--muted);">No jobs yet – start a crawl</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- BOOKMARKS TAB -->
+        <div id="tab-bookmarks" class="tab-panel">
+            <div class="card">
+                <h3>🔖 Bookmarked & Application Tracking (persistent)</h3>
+                <div class="filters">
+                    <div class="filter-group">
+                        <label>Search bookmarks</label>
+                        <input class="input" id="bmSearch" placeholder="Company, title, notes..." oninput="applyBookmarkFilters()">
+                    </div>
+                    <div class="filter-group">
+                        <label>Status filter</label>
+                        <select class="select" id="bmStatusFilter" onchange="applyBookmarkFilters()">
+                            <option value="">All statuses</option>
+                            <option value="Interested">Interested</option>
+                            <option value="Applied">Applied</option>
+                            <option value="Interviewing">Interviewing</option>
+                            <option value="Offer">Offer</option>
+                            <option value="Rejected">Rejected</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Company filter</label>
+                        <input class="input" id="bmCompanyFilter" placeholder="e.g. Airbnb" oninput="applyBookmarkFilters()">
+                    </div>
+                </div>
+
+                <div class="toolbar">
+                    <div class="toolbar-left">
+                        <div class="stats" id="bmStats" style="margin:0;">0 bookmarks</div>
+                    </div>
+                    <div style="display:flex; gap:0.5rem;">
+                        <button class="btn" onclick="fetchBookmarks()">Refresh</button>
+                        <button class="btn" onclick="exportBookmarksCSV()">Export CSV</button>
+                        <button class="btn-danger btn" onclick="clearAllBookmarks()">Clear all (danger)</button>
+                    </div>
+                </div>
+
+                <div style="overflow-x:auto; max-height:70vh; overflow-y:auto; border:1px solid var(--border); border-radius:8px;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Company</th>
+                                <th>Title</th>
+                                <th>Location</th>
+                                <th>Status</th>
+                                <th>Score</th>
+                                <th>Notes</th>
+                                <th>Updated</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bookmarksTbody">
+                            <tr><td colspan="8" style="text-align:center; padding:2rem; color:var(--muted);">No bookmarks yet – bookmark jobs from Ranked Jobs tab</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<!-- Notes edit modal simple -->
+<div id="notesModal" class="hidden" style="position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:200; display:flex; align-items:center; justify-content:center;">
+    <div class="card" style="width:90%; max-width:500px;">
+        <h3>📝 Edit Notes</h3>
+        <textarea id="notesTextarea" class="input notes-input" placeholder="Add personal notes for this job..."></textarea>
+        <div style="display:flex; gap:0.5rem; justify-content:flex-end; margin-top:0.8rem;">
+            <button class="btn" onclick="closeNotesModal()">Cancel</button>
+            <button class="btn-primary btn" onclick="saveNotes()">Save</button>
+        </div>
+    </div>
+</div>
+
+<script>
+let allJobs = [];
+let filteredJobs = [];
+let allBookmarks = [];
+let filteredBookmarks = [];
+let stateInterval = null;
+let currentEditingBookmarkId = null;
+
+function $(id){ return document.getElementById(id); }
+
+function showStatus(msg, type='idle'){
+    const el = $('crawlStatus');
+    el.className = 'status ' + type;
+    el.textContent = msg;
+    $('stateStatus').textContent = type + (msg ? ' – ' + msg.slice(0,60) : '');
+}
+
+async function api(path, opts={}){
+    const res = await fetch(path, opts);
+    if(!res.ok){
+        const txt = await res.text();
+        throw new Error(txt || res.statusText);
+    }
+    const ct = res.headers.get('content-type')||'';
+    if(ct.includes('application/json')) return await res.json();
+    return await res.text();
+}
+
+function switchTab(name){
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+    if(name==='jobs'){
+        document.querySelectorAll('.tab')[0].classList.add('active');
+        $('tab-jobs').classList.add('active');
+    } else {
+        document.querySelectorAll('.tab')[1].classList.add('active');
+        $('tab-bookmarks').classList.add('active');
+        fetchBookmarks();
+    }
+}
+
+// State
+async function refreshState(){
+    try {
+        const data = await api('/api/state');
+        if(data.has_resume){
+            $('resumeInfo').classList.remove('hidden');
+            $('resumeInfo').innerHTML = `<b>${data.resume_name}</b><br>Skills: ${data.resume_skills_count} – ${data.resume_skills.join(', ')}<br>Titles: ${data.resume_titles.join(', ')}<br>Exp: ${data.resume_experience||'N/A'} years`;
+        }
+        if(data.companies_count){
+            $('companiesInfo').classList.remove('hidden');
+            $('companiesInfo').innerHTML = `<b>${data.companies_count} companies</b><br>${data.companies.slice(0,5).map(c=>`${c.name} (${c.ats}:${c.identifier})`).join('<br>')}${data.companies_count>5?'<br>...':''}`;
+        }
+        let statsHtml = `
+            Status: <b>${data.status}</b><br>
+            Resume: ${data.has_resume ? '✅ '+data.resume_name : '❌ missing'}<br>
+            Companies: ${data.companies_count}<br>
+            Ranked jobs: <b>${data.ranked_jobs_count}</b><br>
+            ${data.crawl_stats.total_fetched ? `Fetched: ${data.crawl_stats.total_fetched} | Dedup: ${data.crawl_stats.dedup_removed||0} | Time: ${data.crawl_stats.elapsed_seconds}s` : ''}
+            ${data.progress_message ? '<br>'+data.progress_message : ''}
+        `;
+        $('stats').innerHTML = statsHtml;
+        $('bookmarkCountTab').textContent = data.bookmarks_count||0;
+        if(data.bookmarks_by_status){
+            let bmHtml = `Bookmarks: <b>${data.bookmarks_count||0}</b><br>`;
+            for(const [k,v] of Object.entries(data.bookmarks_by_status)){
+                bmHtml += `${k}: ${v} `;
+            }
+            $('bookmarkStats').innerHTML = bmHtml;
+        }
+
+        showStatus(data.progress_message || data.status, data.status);
+
+        if(data.status === 'crawling'){
+            $('crawlBtn').disabled = true;
+            $('crawlBtn').textContent = '⏳ Crawling...';
+            $('progressBar').classList.remove('hidden');
+            $('progressBar').firstElementChild.style.width = '70%';
+        } else {
+            $('crawlBtn').disabled = false;
+            $('crawlBtn').textContent = '🚀 Start Crawl & Rank';
+            $('progressBar').classList.add('hidden');
+            if(data.status === 'done' && data.ranked_jobs_count>0){
+                if(allJobs.length !== data.ranked_jobs_count){
+                    await fetchJobs();
+                }
+            }
+        }
+    } catch(e){ console.error(e); }
+}
+
+// Resume
+async function uploadResume(input){
+    const file = input.files[0];
+    if(!file) return;
+    showStatus('Uploading resume...', 'uploading');
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+        const res = await fetch('/api/resume', {method:'POST', body:fd});
+        if(!res.ok) throw new Error(await res.text());
+        await res.json();
+        showStatus('Resume parsed', 'idle');
+        await refreshState();
+    } catch(e){
+        showStatus('Resume failed: '+e.message, 'error');
+        alert('Resume upload failed: '+e.message);
+    }
+}
+
+async function uploadCompaniesFile(input){
+    const file = input.files[0];
+    if(!file) return;
+    showStatus('Uploading companies...', 'uploading');
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+        const res = await fetch('/api/companies/upload', {method:'POST', body:fd});
+        if(!res.ok) throw new Error(await res.text());
+        await res.json();
+        showStatus('Companies loaded', 'idle');
+        await refreshState();
+    } catch(e){
+        showStatus('Companies failed: '+e.message, 'error');
+        alert('Failed: '+e.message);
+    }
+}
+
+async function saveCompaniesJson(){
+    const txt = $('companiesJson').value.trim();
+    if(!txt){ alert('Paste JSON first'); return; }
+    try {
+        const payload = JSON.parse(txt);
+        const res = await fetch('/api/companies/json', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify(payload)
+        });
+        if(!res.ok) throw new Error(await res.text());
+        await res.json();
+        showStatus('Companies saved', 'idle');
+        await refreshState();
+    } catch(e){ alert('Invalid JSON: '+e.message); }
+}
+
+async function loadExampleCompanies(){
+    try {
+        const data = await api('/api/example/companies');
+        $('companiesJson').value = JSON.stringify(data, null, 2);
+        await saveCompaniesJson();
+    } catch(e){ alert('Failed: '+e.message); }
+}
+
+async function startCrawl(){
+    const max_workers = parseInt($('maxWorkers').value) || 8;
+    const dedup_strategy = $('dedupStrategy').value;
+    const timeout = parseInt($('timeout').value) || 15;
+    const retries = parseInt($('retries').value) || 2;
+    const fd = new FormData();
+    fd.append('max_workers', max_workers);
+    fd.append('dedup_strategy', dedup_strategy);
+    fd.append('timeout', timeout);
+    fd.append('retries', retries);
+    showStatus('Starting crawl...', 'crawling');
+    try {
+        const res = await fetch('/api/crawl', {method:'POST', body:fd});
+        if(!res.ok) throw new Error(await res.text());
+        showStatus('Crawl started...', 'crawling');
+        if(stateInterval) clearInterval(stateInterval);
+        stateInterval = setInterval(refreshState, 1500);
+        setTimeout(refreshState, 2000);
+    } catch(e){
+        showStatus('Crawl failed: '+e.message, 'error');
+        alert(e.message);
+    }
+}
+
+// Jobs
+async function fetchJobs(){
+    try {
+        const data = await api('/api/jobs');
+        allJobs = data.jobs || [];
+        applyFilters();
+    } catch(e){ console.error(e); }
+}
+
+function applyFilters(){
+    const search = $('searchInput').value.toLowerCase().trim();
+    const minScore = parseFloat($('minScore').value) || 0;
+    const company = $('filterCompany').value.toLowerCase().trim();
+    const location = $('filterLocation').value.toLowerCase().trim();
+    const keyword = $('filterKeyword').value.toLowerCase().trim();
+    const title = $('filterTitle').value.toLowerCase().trim();
+    const source = $('filterSource').value.toLowerCase().trim();
+    const remoteOnly = $('remoteOnly').checked;
+    const sortBy = $('sortBy').value;
+    const sortOrder = $('sortOrder').value;
+
+    filteredJobs = allJobs.filter(j => {
+        if(j.match_score < minScore) return false;
+        if(company && !j.company.toLowerCase().includes(company)) return false;
+        if(location && !j.location.toLowerCase().includes(location)) return false;
+        if(keyword){
+            const searchable = `${j.title} ${j.company} ${j.description_plain||''} ${j.explanation} ${j.matched_skills}`.toLowerCase();
+            if(!searchable.includes(keyword)) return false;
+        }
+        if(title && !j.title.toLowerCase().includes(title)) return false;
+        if(source && j.source.toLowerCase() !== source) return false;
+        if(remoteOnly){
+            const text = `${j.location} ${j.title} ${j.description_plain||''}`.toLowerCase();
+            if(!['remote','wfh','work from home','distributed','anywhere'].some(t=>text.includes(t))) return false;
+        }
+        if(search){
+            const searchable = `${j.title} ${j.company} ${j.location} ${j.explanation} ${j.matched_skills}`.toLowerCase();
+            if(!searchable.includes(search)) return false;
+        }
+        return true;
+    });
+
+    const reverse = sortOrder === 'desc';
+    filteredJobs.sort((a,b)=>{
+        let av,bv;
+        if(sortBy==='score'){ av=a.match_score; bv=b.match_score; }
+        else if(sortBy==='company'){ av=a.company.toLowerCase(); bv=b.company.toLowerCase(); }
+        else if(sortBy==='title'){ av=a.title.toLowerCase(); bv=b.title.toLowerCase(); }
+        else if(sortBy==='location'){ av=a.location.toLowerCase(); bv=b.location.toLowerCase(); }
+        else { av=a.match_score; bv=b.match_score; }
+        if(av < bv) return reverse ? 1 : -1;
+        if(av > bv) return reverse ? -1 : 1;
+        return 0;
+    });
+    renderTable();
+}
+
+function renderTable(){
+    const tbody = $('jobsTbody');
+    $('filterStats').innerHTML = `<b>${filteredJobs.length}</b> / ${allJobs.length} shown`;
+    if(filteredJobs.length===0){
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:2rem; color:var(--muted);">No jobs match</td></tr>`;
+        return;
+    }
+    const rows = filteredJobs.slice(0,500).map(j=>{
+        const score = Math.round(j.match_score);
+        let scoreClass = 'score-low';
+        if(score>=70) scoreClass='score-high';
+        else if(score>=40) scoreClass='score-med';
+        const matched = (j.matched_skills||'').split(',').slice(0,3).map(s=> s.trim()? `<span class="tag match">${s.trim()}</span>` : '').join('');
+        const exp = (j.explanation||'').slice(0,140);
+        const url = j.url || '#';
+        const isBookmarked = allBookmarks.some(b=> b.job_id===j.id || b.url===j.url);
+        return `<tr>
+            <td><span class="score ${scoreClass}">${score}</span></td>
+            <td><span class="company">${escapeHtml(j.company)}</span></td>
+            <td><span class="title">${escapeHtml(j.title)}</span></td>
+            <td><span class="location">${escapeHtml(j.location)}</span></td>
+            <td><span class="badge">${escapeHtml(j.source)}</span></td>
+            <td>${matched}</td>
+            <td><span class="explanation" title="${escapeHtml(j.explanation)}">${escapeHtml(exp)}</span></td>
+            <td><div class="bookmark-actions">
+                <a class="link" href="${url}" target="_blank">Open ↗</a><br>
+                <button class="btn btn-sm ${isBookmarked ? 'btn-success' : ''}" onclick="bookmarkJob('${escapeHtml(j.id)}')">${isBookmarked ? '★ Saved' : '☆ Save'}</button>
+            </div></td>
+        </tr>`;
+    }).join('');
+    tbody.innerHTML = rows;
+    if(filteredJobs.length>500){
+        tbody.innerHTML += `<tr><td colspan="8" style="text-align:center; padding:0.8rem; color:var(--muted);">Showing 500 of ${filteredJobs.length}</td></tr>`;
+    }
+}
+
+function escapeHtml(s){
+    if(!s) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function setSort(field){
+    if($('sortBy').value===field){
+        $('sortOrder').value = $('sortOrder').value==='desc' ? 'asc' : 'desc';
+    } else {
+        $('sortBy').value = field;
+        $('sortOrder').value = 'desc';
+    }
+    applyFilters();
+}
+
+function clearFilters(){
+    $('searchInput').value='';
+    $('minScore').value=0;
+    $('minScore').nextElementSibling.textContent='0';
+    $('filterCompany').value='';
+    $('filterLocation').value='';
+    $('filterKeyword').value='';
+    $('filterTitle').value='';
+    $('filterSource').value='';
+    $('remoteOnly').checked=false;
+    $('sortBy').value='score';
+    $('sortOrder').value='desc';
+    applyFilters();
+}
+
+function exportCSV(useServer){
+    if(useServer){
+        const params = new URLSearchParams();
+        const search = $('searchInput').value.trim();
+        const minScore = $('minScore').value;
+        const company = $('filterCompany').value.trim();
+        const location = $('filterLocation').value.trim();
+        const keyword = $('filterKeyword').value.trim();
+        const title = $('filterTitle').value.trim();
+        const source = $('filterSource').value;
+        if(search) params.set('search', search);
+        if(minScore && minScore!='0') params.set('min_score', minScore);
+        if(company) params.set('company', company);
+        if(location) params.set('location', location);
+        if(keyword) params.set('keyword', keyword);
+        if(title) params.set('title_contains', title);
+        if(source) params.set('source', source);
+        if($('remoteOnly').checked) params.set('remote_only', 'true');
+        params.set('sort_by', $('sortBy').value);
+        params.set('sort_order', $('sortOrder').value);
+        window.open('/api/export/csv?'+params.toString(), '_blank');
+    } else {
+        if(filteredJobs.length===0){ alert('No jobs'); return; }
+        const headers = Object.keys(filteredJobs[0]);
+        const csv = [headers.join(',')].concat(filteredJobs.map(row=>{
+            return headers.map(h=>{
+                let v = row[h]===null||row[h]===undefined ? '' : String(row[h]);
+                v = v.replace(/"/g,'""');
+                if(v.includes(',')||v.includes('"')||v.includes('\n')) v = `"${v}"`;
+                return v;
+            }).join(',');
+        })).join('\n');
+        const blob = new Blob([csv], {type:'text/csv'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'ranked_jobs_view.csv';
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+}
+
+function exportJSON(){
+    if(filteredJobs.length===0){ alert('No jobs'); return; }
+    const blob = new Blob([JSON.stringify(filteredJobs, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'ranked_jobs_view.json';
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+async function resetAll(){
+    if(!confirm('Reset crawl data? Bookmarks are kept (persistent). Use bookmarks tab to clear bookmarks separately.')) return;
+    await api('/api/reset', {method:'POST'});
+    allJobs = [];
+    filteredJobs = [];
+    $('resumeInfo').classList.add('hidden');
+    $('companiesInfo').classList.add('hidden');
+    $('companiesJson').value='';
+    renderTable();
+    await refreshState();
+}
+
+// ================= BOOKMARKS =================
+async function fetchBookmarks(){
+    try {
+        const data = await api('/api/bookmarks');
+        allBookmarks = data.bookmarks || [];
+        $('bookmarkCountTab').textContent = allBookmarks.length;
+        applyBookmarkFilters();
+    } catch(e){ console.error(e); }
+}
+
+function applyBookmarkFilters(){
+    const search = $('bmSearch').value.toLowerCase().trim();
+    const status = $('bmStatusFilter').value;
+    const company = $('bmCompanyFilter').value.toLowerCase().trim();
+
+    filteredBookmarks = allBookmarks.filter(b=>{
+        if(status && b.status !== status) return false;
+        if(company && !b.company.toLowerCase().includes(company)) return false;
+        if(search){
+            const txt = `${b.company} ${b.title} ${b.location} ${b.notes} ${b.status}`.toLowerCase();
+            if(!txt.includes(search)) return false;
+        }
+        return true;
+    });
+
+    // sort by updated desc
+    filteredBookmarks.sort((a,b)=> new Date(b.updated_at) - new Date(a.updated_at));
+
+    renderBookmarks();
+}
+
+function renderBookmarks(){
+    const tbody = $('bookmarksTbody');
+    $('bmStats').innerHTML = `<b>${filteredBookmarks.length}</b> / ${allBookmarks.length} bookmarks`;
+
+    if(filteredBookmarks.length===0){
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:2rem; color:var(--muted);">No bookmarks match – bookmark jobs from Ranked Jobs tab</td></tr>`;
+        return;
+    }
+
+    const rows = filteredBookmarks.map(b=>{
+        const statusClass = `status-${b.status}`;
+        return `<tr>
+            <td><span class="company">${escapeHtml(b.company)}</span></td>
+            <td><span class="title">${escapeHtml(b.title)}</span></td>
+            <td><span class="location">${escapeHtml(b.location)}</span></td>
+            <td><span class="badge ${statusClass}">${escapeHtml(b.status)}</span><br>
+                <select class="select" style="margin-top:0.3rem; padding:0.2rem; font-size:0.8rem;" onchange="updateBookmarkStatus('${b.id}', this.value)">
+                    <option value="Interested" ${b.status==='Interested'?'selected':''}>Interested</option>
+                    <option value="Applied" ${b.status==='Applied'?'selected':''}>Applied</option>
+                    <option value="Interviewing" ${b.status==='Interviewing'?'selected':''}>Interviewing</option>
+                    <option value="Offer" ${b.status==='Offer'?'selected':''}>Offer</option>
+                    <option value="Rejected" ${b.status==='Rejected'?'selected':''}>Rejected</option>
+                </select>
+            </td>
+            <td>${b.match_score ? Math.round(b.match_score) : '-'}</td>
+            <td>
+                <div style="max-width:220px; white-space:pre-wrap; font-size:0.8rem;">${escapeHtml(b.notes||'')}</div>
+                <button class="btn btn-sm" onclick="openNotesModal('${b.id}')">Edit notes</button>
+            </td>
+            <td class="small">${new Date(b.updated_at).toLocaleDateString()}</td>
+            <td><div class="bookmark-actions">
+                <a class="link" href="${b.url}" target="_blank">Open ↗</a><br>
+                <button class="btn btn-sm btn-danger" onclick="removeBookmark('${b.id}')">Remove</button>
+            </div></td>
+        </tr>`;
+    }).join('');
+    tbody.innerHTML = rows;
+}
+
+async function bookmarkJob(jobId){
+    // Find job in allJobs
+    const job = allJobs.find(j=> j.id===jobId);
+    if(!job){ alert('Job not found'); return; }
+
+    try {
+        const res = await fetch('/api/bookmarks', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({
+                job: job,
+                status: 'Interested',
+                notes: ''
+            })
+        });
+        if(!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        console.log('Bookmarked', data);
+        await fetchBookmarks();
+        // Update button state
+        applyFilters();
+        // Switch to bookmarks tab hint
+        if(confirm('Bookmarked! View bookmarks tab?')) switchTab('bookmarks');
+    } catch(e){
+        alert('Bookmark failed: '+e.message);
+    }
+}
+
+async function updateBookmarkStatus(id, newStatus){
+    try {
+        const res = await fetch(`/api/bookmarks/${id}`, {
+            method:'PUT',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({status: newStatus})
+        });
+        if(!res.ok) throw new Error(await res.text());
+        await fetchBookmarks();
+        await refreshState();
+    } catch(e){ alert('Failed: '+e.message); }
+}
+
+function openNotesModal(id){
+    const bm = allBookmarks.find(b=> b.id===id);
+    if(!bm) return;
+    currentEditingBookmarkId = id;
+    $('notesTextarea').value = bm.notes || '';
+    $('notesModal').classList.remove('hidden');
+    $('notesModal').style.display = 'flex';
+}
+
+function closeNotesModal(){
+    $('notesModal').classList.add('hidden');
+    $('notesModal').style.display = 'none';
+    currentEditingBookmarkId = null;
+}
+
+async function saveNotes(){
+    if(!currentEditingBookmarkId) return;
+    const notes = $('notesTextarea').value;
+    try {
+        const res = await fetch(`/api/bookmarks/${currentEditingBookmarkId}`, {
+            method:'PUT',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({notes: notes})
+        });
+        if(!res.ok) throw new Error(await res.text());
+        closeNotesModal();
+        await fetchBookmarks();
+    } catch(e){ alert('Save failed: '+e.message); }
+}
+
+async function removeBookmark(id){
+    if(!confirm('Remove this bookmark?')) return;
+    try {
+        const res = await fetch(`/api/bookmarks/${id}`, {method:'DELETE'});
+        if(!res.ok) throw new Error(await res.text());
+        await fetchBookmarks();
+        await refreshState();
+        applyFilters(); // update star buttons
+    } catch(e){ alert('Remove failed: '+e.message); }
+}
+
+function exportBookmarksCSV(){
+    const params = new URLSearchParams();
+    const status = $('bmStatusFilter').value;
+    const company = $('bmCompanyFilter').value.trim();
+    const search = $('bmSearch').value.trim();
+    if(status) params.set('status', status);
+    if(company) params.set('company', company);
+    if(search) params.set('search', search);
+    window.open('/api/bookmarks/export/csv?'+params.toString(), '_blank');
+}
+
+async function clearAllBookmarks(){
+    if(!confirm('Clear ALL bookmarks? This deletes persistent file ~/.jobmatcher/bookmarks.json and cannot be undone!')) return;
+    if(!confirm('Are you REALLY sure? Type OK to confirm')) return;
+    try {
+        // Use the store clear via reset? We have no clear endpoint, so delete one by one or add endpoint
+        // We'll call many deletes? Simpler: call backend clear via direct store? Add endpoint for clear
+        // For now, use DELETE for each
+        for(const bm of allBookmarks){
+            await fetch(`/api/bookmarks/${bm.id}`, {method:'DELETE'});
+        }
+        await fetchBookmarks();
+        await refreshState();
+    } catch(e){ alert('Clear failed: '+e.message); }
+}
+
+// Init
+refreshState();
+fetchJobs();
+fetchBookmarks();
+setInterval(refreshState, 3000);
+</script>
+</body>
+</html>
