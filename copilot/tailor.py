@@ -269,7 +269,19 @@ def audit_claims(master, tailored_text, letter, settings, base_letter=""):
     except llm.LLMError as exc:
         # An unverified draft is never "Ready": surface it for human review.
         return [f"claims audit could not run ({exc}); check this draft by hand"]
-    return [f"unsupported claim: {c}" for c in result.unsupported if c.strip()]
+    # A small auditor flags things that are plainly in the sources ("YOLOv12", "371 NYC DOT
+    # cameras"). A phrase whose every word appears in the sources is not a new claim: drop it.
+    known = _stems(source)
+    flags = []
+    for c in result.unsupported:
+        if not c.strip():
+            continue
+        phrase = _quoted(f'unsupported claim: {c}') or c
+        words = {w for w in _stems(phrase) if len(w) > 2}
+        if words and len(words & known) / len(words) >= (1.0 if len(words) <= 3 else 0.85):
+            continue
+        flags.append(f"unsupported claim: {c}")
+    return flags
 
 
 # ---------------- tailoring (edit-based) ----------------
@@ -1052,11 +1064,14 @@ def tailor(master: MasterResume, job, matched, missing, settings, base_letter=""
     # resume plan is being made. Both share the cached system prompt.
     from concurrent.futures import ThreadPoolExecutor
     pool = ThreadPoolExecutor(max_workers=1)
+    # The cover letter is optional (writing.cover_letter): it costs about as many model
+    # calls as the resume, and most applications don't need one.
+    want_letter = writing.get("cover_letter", True)
     letter_future = pool.submit(
         llm.parse, settings, system,
         base_user + "\n\nWrite ONLY the cover letter now, following the cover letter instructions "
                     "and every rule above. The resume edits are handled separately.",
-        LetterFix, 16000)
+        LetterFix, 16000) if want_letter else None
     # Audits and bullet repairs are narrow checks: they don't need deep thinking.
     check = {**settings, "effort": "low"}
 
@@ -1104,13 +1119,13 @@ def tailor(master: MasterResume, job, matched, missing, settings, base_letter=""
             user = (base_user + "\n\nYOUR PREVIOUS PLAN HAD THESE PROBLEMS; FIX THEM:\n- " + "\n- ".join(feedback)
                     + "\nKeep every metric verbatim and keep each edited bullet about the same length.")
 
-        letter = plain(letter_future.result()[0].cover_letter.strip())
+        letter = plain(letter_future.result()[0].cover_letter.strip()) if want_letter else ""
     finally:
         pool.shutdown(wait=False)
 
     # The letter: checks in code plus a claims audit; one focused rewrite if needed.
     letter_flags = (letter_problems(master_d, letter, job["description"], trusted, writing)
-                    + audit_claims(master_d, "", letter, check, trusted))
+                    + audit_claims(master_d, "", letter, check, trusted)) if want_letter else []
     if letter_flags:
         letter, letter_flags = repair_letter(master_d, letter, letter_flags, job["description"],
                                              settings, trusted, writing)

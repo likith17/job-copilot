@@ -28,8 +28,8 @@ scoring:
 
 # ---- Stage 3: AI work ----
 llm:
-  max_grade_per_run: 300     # first run grades the backlog; later runs only see new postings
-  max_tailor_per_run: 10     # top jobs that get a tailored resume + cover letter automatically
+  max_grade_per_run: 100     # best matches first; ~11 s each on a local model. The rest wait for the next run
+  max_tailor_per_run: 0      # documents are written when you ask for them (Generate in the app), not for every match
   skip_no_sponsorship: true  # don't write documents for postings that rule out sponsorship
 
   # Where each model runs. "openai" = any OpenAI-compatible endpoint.
@@ -40,30 +40,30 @@ llm:
     gemini:    {type: openai, base_url: "https://generativelanguage.googleapis.com/v1beta/openai/",
                 api_key_env: GEMINI_API_KEY}
 
-  # Which provider and model each step uses. Mix freely, e.g. grade locally
-  # (high volume) and tailor with Claude (10 a day, where quality shows).
-  # `workers` = parallel requests; keep it at 1-2 for a local model on one GPU.
+  # Which provider and model each step uses.
   #
-  # Grader benchmark, 2026-10-09: 26 real jobs vs Claude Opus grades.
-  #   llama3.1:8b (local)          spearman 0.16  4.5s/job
-  #   qwen3:8b (local, no think)   spearman 0.36  6.3s/job
-  #   gpt-oss:120b-cloud           spearman 0.79  1.5s/job  (grades ~18 points high,
-  #                                                         so its cutoff is 82, not 70)
-  # gpt-oss:120b-cloud runs on Ollama's servers (needs `ollama signin`, free tier
-  # has usage limits); the local 8B models stay fully offline but rank poorly.
-  # Local 8B models need the 12K-context builds in ollama/*.Modelfile.
+  # Everything runs on your own GPU through Ollama: no account, no API key, no bill.
+  # (Ollama's cloud models, which this used before, became paid in Nov 2026.)
+  #   ollama pull qwen3.5:9b
+  #   ollama create jc-qwen3.5-9b -f ollama/qwen3.5-9b-8k.Modelfile
+  #
+  # Grader benchmark: 24 real jobs vs Claude Opus grades (Spearman, 1.0 = same ranking).
+  #   gpt-oss:120b-cloud (paid now)    0.79   1.5 s/job
+  #   qwen3.5:9b  (local)              0.74   11 s/job    <- used
+  #   qwen3:8b    (local, rubric)      0.60   4.6 s/job   (add `method: rubric` for small models)
+  #   qwen3:8b    (local)              0.48   9.3 s/job
+  #
+  # One request at a time (`workers: 1`): an 8 GB GPU holds one copy of the model.
+  # To use a hosted model instead (e.g. a free Groq or Gemini key in .env), set
+  # `provider: groq` / `gemini` and its model name on any task below.
   tasks:
-    grade:       {provider: local, model: "gpt-oss:120b-cloud", workers: 4, min_fit: 82}
-    sponsorship: {provider: local, model: "gpt-oss:120b-cloud", workers: 4}
-    # Writing runs on open models, one focused call per bullet (see copilot/bullets.py).
-    # Switch `model` to your own fine-tuned writer once `copilot eval` shows it wins.
-    tailor: {provider: local, model: "gpt-oss:120b-cloud", mode: per_bullet, workers: 3}
+    grade:       &local {provider: local, model: "jc-qwen3.5-9b", workers: 1, timeout: 600,
+                         extra_body: {reasoning_effort: none}, min_fit: 75}
+    sponsorship: {<<: *local}
+    # Writing: one focused call per bullet (see copilot/bullets.py).
+    tailor:      {<<: *local, mode: per_bullet}
     # Answers to form questions ("Why this company?"), from your story, cover letter and resume.
-    answer: {provider: local, model: "gpt-oss:120b-cloud"}
-    # Claude settings, for when credits are available:
-    #   grade:       {provider: anthropic, model: claude-opus-5-5, effort: low}
-    #   sponsorship: {provider: anthropic, model: claude-sonnet-4-6}
-    #   tailor:      {provider: anthropic, model: claude-opus-5-5, effort: medium}
+    answer:      {<<: *local}
 
 # ---- Output ----
 excel: jobs.xlsx           # written inside data_dir
@@ -154,6 +154,10 @@ writing:
     have.
   # Sections the writer may change; any left out stay exactly as on your resume.
   sections: [summary, experience, projects, skills]
+
+  # Also write a cover letter with each resume. Off by default: it roughly doubles the
+  # model calls per job, and a letter that fails the fact-check is withheld anyway.
+  cover_letter: false
 
   # How the cover letter is written. Enforced in code as well: banned phrases,
   # plain ASCII punctuation, word count (letter_words), must-include points, and

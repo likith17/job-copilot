@@ -70,6 +70,9 @@ CREATE TABLE IF NOT EXISTS jobs (
     revision              INTEGER DEFAULT 0,  -- bumps on every regenerate / revise / edit
     tailor_report         TEXT,               -- JSON: requirements, bullet before/after, keyword coverage
 
+    doc_status            TEXT,               -- generating | ready | failed (documents for this job)
+    doc_error             TEXT,               -- why the last generation failed, in full
+
     status                TEXT DEFAULT 'New', -- user-facing application status
     notes                 TEXT DEFAULT '',
     applied_at            TEXT,

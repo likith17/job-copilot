@@ -36,9 +36,11 @@ def test_parse_file_txt():
     parser = ResumeParser()
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
         f.write(SAMPLE_RESUME)
-        f.flush()
+    # Closed before it's read or deleted: Windows won't delete a file that is still open.
+    try:
         profile = parser.parse_file(f.name)
         assert "Python" in profile.skills
+    finally:
         Path(f.name).unlink()
 
 

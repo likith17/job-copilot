@@ -66,7 +66,6 @@ def run(cfg, model=None, effort=None, workers=3, say=print, mode=None, finetuned
         settings["mode"] = mode
     if finetuned:
         settings.update(finetuned=True, mode="per_bullet")
-    resume_text = inputs.read_text(cfg.resume)
     from copilot.training import master_for_training
     mdict = master_for_training(cfg, say)
     master = tailor.MasterResume.model_validate(mdict)

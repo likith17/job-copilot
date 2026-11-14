@@ -465,6 +465,7 @@ def compile_pdf(tex, out_pdf, timeout=240):
         try:
             proc = subprocess.run([engine, "-interaction=nonstopmode", "-halt-on-error", "resume.tex"],
                                   cwd=tmp, capture_output=True, text=True, timeout=timeout,
+                                  creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                                   encoding="utf-8", errors="replace")
         except subprocess.TimeoutExpired as exc:
             raise LaTeXError(f"{engine} timed out after {timeout}s") from exc
@@ -474,5 +475,7 @@ def compile_pdf(tex, out_pdf, timeout=240):
             raise LaTeXError(f"{engine} failed: {' | '.join(errors) or proc.stdout[-300:]}")
         m = re.search(r"Output written on .*?\((\d+) pages?", proc.stdout)
         out_pdf.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(pdf, out_pdf)
+        part = out_pdf.with_name(out_pdf.name + ".part")     # never leave a half-written PDF behind
+        shutil.copyfile(pdf, part)
+        part.replace(out_pdf)
         return int(m.group(1)) if m else 1

@@ -11,7 +11,13 @@ from pydantic import BaseModel
 
 @lru_cache(maxsize=1)
 def _agent():
-    import agent
+    import os
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+    try:
+        import agent
+    except Exception:           # first run on this machine: the model has to be downloaded once
+        os.environ.pop("HF_HUB_OFFLINE", None)
+        import agent
     from copilot import embedcache
     agent.embed_cache = embedcache
     return agent

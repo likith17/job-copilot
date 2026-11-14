@@ -86,6 +86,7 @@ def _run(cfg, *, fetch_jobs=True, use_llm=True, limit=None, say=print):
                 say(f"AI steps stopped: {exc}")
 
         stats["timing_s"] = timing
+        stats["llm"] = {**llm.STATS, "seconds": round(llm.STATS["seconds"])}
         db.prune_closed(conn)
         db.record_run(conn, started, stats)
         conn.commit()
@@ -221,7 +222,7 @@ def _grade(cfg, conn, resume_text, stats, say):
     resume_key = db.text_key(resume_text)
 
     def cache_key(job):
-        return f"grade:{settings.get('model')}:{resume_key}:{db.text_key(job['description'])}"
+        return f"grade:{settings.get('model')}:{settings.get('method', 'direct')}:{resume_key}:{db.text_key(job['description'])}"
 
     # A grade depends only on the resume, the posting and the model: going back to a
     # resume graded before costs nothing.
@@ -298,6 +299,9 @@ def _make_applications(cfg, conn, resume_text, jobs, cap, *, force, stats, say, 
         "examples": db.feedback_examples(conn),
     }
     say(f"Writer: {ctx['writer']['model']}")
+    conn.execute("UPDATE jobs SET doc_status = 'failed', doc_error = 'interrupted before it finished' "
+                 "WHERE doc_status = 'generating'")
+    conn.commit()
     queue, done, running = list(jobs), 0, {}
     width = ctx["writer"].get("workers", 3)
     pool = ThreadPoolExecutor(max_workers=width)
@@ -305,6 +309,8 @@ def _make_applications(cfg, conn, resume_text, jobs, cap, *, force, stats, say, 
         while queue or running:
             while queue and len(running) < width and done + len(running) < cap:
                 job = queue.pop(0)
+                db.update(conn, job["id"], doc_status="generating", doc_error=None)
+                conn.commit()
                 running[pool.submit(_application, ctx, job)] = job
             if not running:
                 break
@@ -317,7 +323,9 @@ def _make_applications(cfg, conn, resume_text, jobs, cap, *, force, stats, say, 
                 raise
             except Exception as exc:
                 log.exception("documents failed for %s", job["id"])
-                db.update(conn, job["id"], stage="error", error=str(exc)[:500])
+                # Earlier documents, if any, stay in place: a failed retry never removes a good pack.
+                db.update(conn, job["id"], doc_status="failed", doc_error=f"{type(exc).__name__}: {exc}"[:800],
+                          error=str(exc)[:500], **({} if job.get("resume_path") else {"stage": "error"}))
                 conn.commit()
                 stats["errors"] += 1
                 say(f"  FAIL  {label}: {exc}")
@@ -328,12 +336,18 @@ def _make_applications(cfg, conn, resume_text, jobs, cap, *, force, stats, say, 
                 done += 1
                 stats["tailored"] += 1
                 cov = (updates.get("tailor_report") or {}).get("coverage", {})
-                say(f"  done  {label}  fit {updates['fit_score']} -> {updates['tailored_fit']}"
+                say(f"  done  {label}  fit {updates['fit_score']}"
+                    + (f" -> {updates['tailored_fit']}" if updates.get("tailored_fit") is not None else "")
                     + (f"  keywords {cov['before']}/{cov['total']} -> {cov['after']}/{cov['total']}" if cov else "")
                     + ("  [review flags]" if _hard(updates["tailor_flags"]) else ""))
             else:
+                db.update(conn, job["id"], doc_status=None)
+                conn.commit()
                 say(f"  skip  {label}  (posting rules out sponsorship)")
     finally:
+        conn.execute("UPDATE jobs SET doc_status = 'failed', doc_error = 'stopped: the AI model became unavailable' "
+                     "WHERE doc_status = 'generating'")
+        conn.commit()
         pool.shutdown(wait=True, cancel_futures=True)
 
 
@@ -392,7 +406,7 @@ def _application(ctx, job):
     folder.mkdir(parents=True, exist_ok=True)
     name = slug(master.contact.name, 30)
     stem = slug(job["company"], 20)
-    letter_path = folder / f"{name}_Cover_Letter_{stem}.docx"
+    letter_path = folder / f"{name}_Cover_Letter_{stem}.docx" if letter else None
     tex_path = None
     if cfg.resume.suffix.lower() == ".tex":
         # Your own LaTeX layout: edits written back into the source, compiled to PDF.
@@ -405,16 +419,20 @@ def _application(ctx, job):
     if tex_path is None:
         resume_path = folder / f"{name}_Resume_{stem}.docx"
         review_path = folder / f"REVIEW_changes_in_bold_{stem}.docx"
-        render_resume(resume, resume_path)                       # the copy you send
-        render_resume(resume, review_path, changed=_changed_texts(report, resume, master))  # for you
-    render_cover_letter(letter, resume["contact"], job["company"], letter_path)
+        _atomic(render_resume, resume_path, resume)              # the copy you send
+        _atomic(render_resume, review_path, resume, changed=_changed_texts(report, resume, master))  # for you
+    if letter_path:
+        _atomic(render_cover_letter, letter_path, letter, resume["contact"], job["company"])
+    validate_documents(resume_path, letter_path, master.contact.name)
 
     # Judge the tailoring with the same grader that ranked the job. The
     # embedding match is reported too, but it falls whenever a resume gets
     # more focused, so it can't be the measure of "better".
     tailored_text = tailor.resume_to_text(resume)
     t_match, _, _ = scoring.match(tailored_text, job["description"])
-    t_fit = grade.grade(tailored_text, job, grade_settings)[0].fit
+    # Re-grading the tailored resume is one more model call for a number that is mostly
+    # grader noise (see below); off unless llm.regrade_tailored is set.
+    t_fit = grade.grade(tailored_text, job, grade_settings)[0].fit if llm_cfg.get("regrade_tailored") else None
     # No flag on fit before/after: the same resume graded 78-90 across runs on
     # one job (Oct 2026, gpt-oss), so the difference is mostly grader noise.
     # Keyword coverage, counted in code, is the measure of what tailoring changed.
@@ -426,7 +444,8 @@ def _application(ctx, job):
 
     updates.update(stage="tailored", fit_score=job["fit_score"], tailored_match=t_match,
                    tailored_fit=t_fit, tailored_final=t_match * f["multiplier"],
-                   resume_path=str(resume_path), cover_letter_path=str(letter_path),
+                   resume_path=str(resume_path), cover_letter_path=str(letter_path) if letter_path else None,
+                   doc_status="ready", doc_error=None,
                    review_resume_path=str(review_path),
                    resume_tex_path=str(tex_path) if tex_path else None,
                    tailor_flags=flags, tailor_changes=changes, tailored_at=db.now(),
@@ -437,6 +456,42 @@ def _application(ctx, job):
     if job.get("status") in (None, "New", "Review", "Ready", "Skipped"):
         updates["status"] = "Review" if _hard(flags) else "Ready"
     return updates
+
+
+class DocumentError(Exception):
+    """A generated file is missing or unreadable: the job is not reported as ready."""
+
+
+def validate_documents(resume_path, letter_path=None, name=""):
+    """Open what was written before calling it done. Raises DocumentError with the reason."""
+    for label, path in (("resume", resume_path), ("cover letter", letter_path)):
+        if path is None:
+            continue
+        path = Path(path)
+        if not path.exists() or path.stat().st_size < 1000:
+            raise DocumentError(f"the {label} file was not written ({path.name})")
+        try:
+            if path.suffix.lower() == ".pdf":
+                from pypdf import PdfReader
+                pages = PdfReader(str(path)).pages
+                text = " ".join((pg.extract_text() or "") for pg in pages)
+            else:
+                from docx import Document
+                text = " ".join(p.text for p in Document(str(path)).paragraphs)
+        except Exception as exc:
+            raise DocumentError(f"the {label} file can't be opened ({path.name}): {exc}") from exc
+        if len(text.split()) < 40:
+            raise DocumentError(f"the {label} file has almost no text ({path.name})")
+        last = (name.split() or [""])[-1].lower()
+        if label == "resume" and last and last not in text.lower():
+            raise DocumentError(f"the resume file doesn't contain your name ({path.name})")
+
+
+def _atomic(render, path, *args, **kwargs):
+    """Render to a temporary file and move it into place, so a crash never leaves half a document."""
+    part = path.with_name(path.stem + ".part" + path.suffix)
+    render(*args, part, **kwargs)
+    part.replace(path)
 
 
 def _hard(flags):

@@ -309,3 +309,16 @@ def test_sponsorship_is_asked_once_per_posting(cfg, monkeypatch):
     monkeypatch.setattr(scoring, "sponsorship", fake)
     a = scoring.sponsorship_cached(cfg, "posting", {"model": "m"})
     assert scoring.sponsorship_cached(cfg, "posting", {"model": "m"}) == a and calls == ["posting"]
+
+
+def test_upload_choice_survives_moving_the_project(cfg):
+    folder = cfg.data_dir / "inputs" / "resume"
+    folder.mkdir(parents=True)
+    (folder / "2026-01-01_000000_resume.tex").write_text("x", encoding="utf-8")
+    # A save from before the fix: a full path on a drive that no longer exists.
+    (cfg.data_dir / "inputs" / "current.json").write_text(
+        json.dumps({"resume": r"E:\old\data\inputs\resume\2026-01-01_000000_resume.tex"}), encoding="utf-8")
+    assert inputs.current(cfg, "resume") == folder / "2026-01-01_000000_resume.tex"
+    inputs.set_current(cfg, "resume", folder / "2026-01-01_000000_resume.tex")
+    assert json.loads((cfg.data_dir / "inputs" / "current.json").read_text())["resume"] == "2026-01-01_000000_resume.tex"
+    assert inputs.current(cfg, "resume") == folder / "2026-01-01_000000_resume.tex"

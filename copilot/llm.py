@@ -104,6 +104,32 @@ _clients = {}
 _lock = threading.Lock()
 
 
+_ollama_started = False
+
+
+def _start_ollama(base_url, wait=25):
+    """Ollama is the default model server and isn't always running (after a reboot,
+    or in a scheduled run). Start it once and wait for it. True if it came up."""
+    global _ollama_started
+    import shutil
+    import subprocess
+    import time
+    import urllib.request
+    if _ollama_started or ":11434" not in base_url or not shutil.which("ollama"):
+        return False
+    _ollama_started = True
+    flags = (subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP) if os.name == "nt" else 0
+    subprocess.Popen(["ollama", "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=flags)
+    for _ in range(wait):
+        time.sleep(1)
+        try:
+            urllib.request.urlopen(base_url.replace("/v1", "") + "/api/version", timeout=2)
+            return True
+        except OSError:
+            continue
+    return False
+
+
 def _client(settings):
     key = (settings["type"], settings.get("base_url"), settings.get("api_key_env"))
     with _lock:
@@ -130,18 +156,31 @@ class RateLimited(LLMUnavailable):
     outlasts every wait stops the run."""
 
 
+STATS = {"calls": 0, "failed": 0, "seconds": 0.0}      # this process's model usage, for the run record
+_stats_lock = threading.Lock()
+
+
 def parse(settings, system, user, schema, max_tokens=16000):
     """One structured-output call. `system` is a list of text blocks (Anthropic
     form, so callers control cache breakpoints). Returns (parsed, usage)."""
     import time
     call = _parse_anthropic if settings["type"] == "anthropic" else _parse_openai
-    for wait in (*RATE_LIMIT_WAITS, None):
-        try:
-            return call(settings, system, user, schema, max_tokens)
-        except RateLimited:
-            if wait is None:
-                raise
-            time.sleep(wait)
+    started, ok = time.perf_counter(), False
+    try:
+        for wait in (*RATE_LIMIT_WAITS, None):
+            try:
+                result = call(settings, system, user, schema, max_tokens)
+                ok = True
+                return result
+            except RateLimited:
+                if wait is None:
+                    raise
+                time.sleep(wait)
+    finally:
+        with _stats_lock:
+            STATS["calls"] += 1
+            STATS["failed"] += not ok
+            STATS["seconds"] += time.perf_counter() - started
 
 
 # ---------------- Anthropic ----------------
@@ -235,6 +274,8 @@ def _parse_openai(settings, system, user, schema, max_tokens):
                 extra_body=settings.get("extra_body"),
             )
         except openai.APIConnectionError as exc:
+            if attempt == 0 and _start_ollama(settings.get("base_url", "")):
+                continue        # it wasn't running; it is now
             raise LLMUnavailable(f"Can't reach {settings['provider']} at {settings['base_url']}. "
                                  f"If it's Ollama, is it running (`ollama serve`)?") from exc
         except (openai.AuthenticationError, openai.PermissionDeniedError) as exc:

@@ -68,17 +68,23 @@ def save_upload(cfg, kind, filename, data: bytes, force=False):
 
 
 def set_current(cfg, kind, path):
+    # Only the file name: uploads live in data/inputs/<kind>/, so the choice
+    # survives moving the project to another folder or drive.
     state = _state(cfg)
-    state[kind] = str(path)
+    state[kind] = Path(path).name
     _dir(cfg).mkdir(parents=True, exist_ok=True)
     _state_path(cfg).write_text(json.dumps(state, indent=2), encoding="utf-8")
 
 
 def current(cfg, kind):
     """The default file for `kind`: the last upload, else the config fallback."""
-    p = _state(cfg).get(kind)
-    if p and Path(p).exists():
-        return Path(p)
+    saved = _state(cfg).get(kind)
+    if saved:
+        # Found by name in this project's uploads; older saves held a full path,
+        # which breaks when the project moves.
+        p = _dir(cfg) / kind / Path(saved.replace("\\", "/")).name
+        if p.exists():
+            return p
     if kind == "resume" and cfg.resume.exists():
         return cfg.resume
     return None

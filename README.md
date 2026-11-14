@@ -70,8 +70,8 @@ cd job-copilot
 pip install -r requirements.txt
 ```
 
-1. **Install the free model.** Install [Ollama](https://ollama.com), then run `ollama signin` and `ollama pull gpt-oss:120b-cloud`. It ranks jobs and writes documents with no API key and no bill (Ollama's free tier has usage limits; the app waits and retries when it hits one).
-2. **Optional: use a paid model.** To write with Claude or another provider, copy `.env.example` to `.env`, add the key, and change `llm.tasks.tailor` in `config.yaml`. `.env` is git-ignored.
+1. **Install the local model.** Install [Ollama](https://ollama.com), then run `ollama pull qwen3.5:9b` (6.6 GB) and `ollama create jc-qwen3.5-9b -f ollama/qwen3.5-9b-8k.Modelfile`. Everything then runs on your own GPU (8 GB is enough): no account, no API key, no bill. The app starts Ollama itself if it isn't running.
+2. **Optional: use a hosted model.** For faster or stronger writing, copy `.env.example` to `.env`, add a key (Groq and Gemini have free tiers; Claude is paid), and set `provider` and `model` on a task in `config.yaml`. `.env` is git-ignored.
 3. **Set your preferences** in `config.yaml` (see [Configuration](#configuration)).
 4. **Start the app:**
 
@@ -237,12 +237,12 @@ Each stage only sees what survived the cheaper stage before it, so the paid AI w
        │
  sponsorship check, tailored resume, cover letter, claims audit
        │
-     top 10   ──>  ready to apply          free, about 2 minutes per job
+     on demand ──> ready to apply         free, a few minutes per job on a local model
 ```
 
 Only new postings enter the funnel, so after the first run a daily run handles a few dozen jobs.
 
-**Models are pluggable per task:** Claude, Ollama (local or cloud), Groq, Gemini, or any OpenAI-compatible endpoint. The default setup is free: an open model does the ranking and the writing.
+**Models are pluggable per task:** a local Ollama model by default, or Groq, Gemini, Claude, or any OpenAI-compatible endpoint. The default setup costs nothing and needs no account.
 
 ---
 
@@ -298,6 +298,9 @@ data/                 your database, documents, and Excel sheet (git-ignored)
 ---
 
 ## Known limits
+
+- **A local model is slower and weaker than a hosted one.** Grading takes about 11 s per job on an 8 GB GPU, so a run grades your best 100 matches and leaves the rest for the next run. Its grades agree with Claude Opus at 0.74 (Spearman) on our 24-job benchmark; the hosted model it replaced scored 0.79.
+- **Documents are written on demand**, not for every match (`llm.max_tailor_per_run: 0`). Cover letters are off by default (`writing.cover_letter`).
 
 - **Sponsorship history** uses a list of about 150 large employers, so startups show "Unknown". Public H-1B employer data would fix this.
 - **The resume layout** is a clean single-column Word template. Keeping your exact LaTeX/Overleaf layout is planned.

@@ -24,6 +24,7 @@ from copilot.config import load_config
 
 def say(msg):
     print(msg, flush=True)  # stream progress even when output goes to a log file
+    logging.getLogger("copilot.run").info(str(msg).strip())
 
 
 def main(argv=None):
@@ -87,7 +88,19 @@ def main(argv=None):
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO if args.verbose else logging.ERROR,
                         format="%(levelname)s %(name)s: %(message)s")
+    for h in logging.getLogger().handlers:      # the console shows errors only; the log file gets everything
+        h.setLevel(logging.INFO if args.verbose else logging.ERROR)
     cfg = load_config(args.config)
+    # Everything a run says, with times, in data/logs/copilot.log (kept to ~4 MB).
+    from logging.handlers import RotatingFileHandler
+    (cfg.data_dir / "logs").mkdir(exist_ok=True)
+    handler = RotatingFileHandler(cfg.data_dir / "logs" / "copilot.log", maxBytes=1_000_000, backupCount=3,
+                                  encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    handler.setLevel(logging.INFO)
+    logging.getLogger().addHandler(handler)
+    logging.getLogger("copilot").setLevel(logging.INFO)
+    logging.getLogger("copilot.cli").info("command: %s", " ".join(sys.argv[1:]))
 
     try:
         if args.cmd == "run":

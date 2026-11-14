@@ -8,6 +8,7 @@
 3. Generate documents for any other job with one click; track status here or
    in the Excel sheet (edits in either place are kept).
 """
+import json
 import os
 import subprocess
 import sys
@@ -16,7 +17,6 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
-import streamlit.components.v1 as components
 
 from copilot import db, export, inputs, latex, llm, pipeline, runlock
 from copilot.latex import untoken
@@ -28,16 +28,6 @@ cfg = load_config()
 
 
 @st.cache_resource
-def _warm_up():
-    """Load the embedding model once per app process, in the background, so the
-    first Run or Generate doesn't wait ~40s for it."""
-    import threading
-    from copilot import scoring
-    threading.Thread(target=scoring._agent, daemon=True).start()
-    return True
-
-
-@st.cache_resource
 def _autofill_api():
     """The local API the autofill extension talks to; lives as long as the app.
     None if it's already running (e.g. `python -m copilot serve`)."""
@@ -45,7 +35,6 @@ def _autofill_api():
     return applyserver.serve(inputs.apply(load_config()), background=True)
 
 
-_warm_up()
 _autofill_api()
 
 H1B = export.H1B_LABEL
@@ -76,8 +65,9 @@ def start_background(args, log_path=LOG_PATH, marker="bg_started"):
             subprocess.Popen(command, start_new_session=True, **kwargs)
         else:
             # Its own process, outside the app's: closing or restarting the app (or whatever started
-            # it) no longer closes the browser and the applications in it.
-            detached = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+            # it) no longer closes the browser and the applications in it. A hidden console, not
+            # none at all: with none, every helper it runs (the PDF compiler...) pops up its own window.
+            detached = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
             try:
                 subprocess.Popen(command, creationflags=detached | subprocess.CREATE_BREAKAWAY_FROM_JOB, **kwargs)
             except OSError:      # the app runs inside a job that forbids breaking away
@@ -130,11 +120,27 @@ def _progress():
     if not running:
         if started:
             del st.session_state["bg_started"]
-            st.session_state["flash"] = ("success", "Finished. Results are below; the log is in data/logs/.")
+            st.session_state["flash"] = _outcome()
         st.rerun()      # the whole page: new results, and the buttons unlock
     lines = LOG_PATH.read_text(encoding="utf-8", errors="replace").splitlines() if LOG_PATH.exists() else []
     st.info("⏳ Working in the background. You can keep using the page, or close it; the work continues.")
     st.code("\n".join(lines[-12:]) or "Starting...", language=None)
+
+
+def _outcome():
+    """(level, message) for a finished background job, from what it printed: never 'done' on a failure."""
+    lines = LOG_PATH.read_text(encoding="utf-8", errors="replace").splitlines() if LOG_PATH.exists() else []
+    done = sum(l.startswith("  done") for l in lines)
+    failed = [l.strip()[6:] for l in lines if l.startswith("  FAIL")]
+    stopped = next((l for l in lines if l.startswith("AI step") or "Traceback" in l or "already in progress" in l), None)
+    if stopped:
+        return ("error", f"Stopped early: {stopped[:300]}  ({done} document set(s) were written first.)")
+    if failed:
+        return ("warning", f"{done} document set(s) written, {len(failed)} failed: {failed[0][:240]}. "
+                           "Open the job to see the error and retry.")
+    if done:
+        return ("success", f"{done} document set(s) written and checked.")
+    return ("info", (lines[-1][:240] if lines else "Finished.") + "  Full log: data/logs/copilot.log")
 
 
 def flash_result(result, asked):
@@ -413,6 +419,10 @@ with tab_jobs:
 
     def docs_state(row):
         p = row["resume_path"]
+        if row.get("doc_status") == "generating":
+            return "⏳ writing"
+        if row.get("doc_status") == "failed":
+            return "❌ failed"
         if not (isinstance(p, str) and os.path.exists(p)):
             return ""
         # Packs from before resume tracking have no sha; treat them as current.
@@ -421,6 +431,13 @@ with tab_jobs:
 
     df["Docs"] = df.apply(docs_state, axis=1)
 
+    last_run = conn.execute("SELECT stats FROM runs ORDER BY id DESC LIMIT 1").fetchone()
+    ai_problem = json.loads(last_run["stats"] or "{}").get("llm_unavailable") if last_run else None
+    ungraded = int(((df["fit_score"].isna()) & (df["stage"] == "candidate")).sum())
+    if ai_problem:
+        st.warning(f"**The last run couldn't use the AI model**, so {ungraded} matched jobs have no Fit grade and no "
+                   f"documents were written. Reason: {ai_problem} Start Ollama, then run the pipeline again "
+                   "(untick *Fetch new jobs* to skip the crawl).")
     m = st.columns(6)
     m[0].metric("Ready to apply", int(((df["Docs"] == "✅") & (df["status"] == "Ready")).sum()),
                 help="Documents written and nothing flagged (or you reviewed them).")
@@ -432,17 +449,20 @@ with tab_jobs:
     m[5].metric("Scored", len(df))
 
     f1, f2, f3 = st.columns([2, 2, 1])
-    view = f1.radio("Show", ["Have documents", "Shortlisted", "All graded", "Everything scored", "In progress"],
+    view = f1.radio("Show", help="**Have documents**: a tailored resume is written. **Shortlisted**: AI fit grade "
+                    "at or above your cutoff. **AI-graded**: every job the AI has graded. **All matched**: every job "
+                    "that passed the filters and the local match, graded or not. **In progress**: applied or later.",
+                    options=["Have documents", "Shortlisted", "AI-graded", "All matched", "In progress"],
                     horizontal=True)
     search = f2.text_input("Search company or title", placeholder="e.g. RL, Anthropic, inference")
     hide_closed = f3.checkbox("Hide closed", value=True)
 
     min_fit = llm.min_fit(cfg)
     mask = {
-        "Have documents": df["Docs"] != "",
+        "Have documents": df["Docs"].isin(["✅", "⚠️ old"]) | ((df["Docs"] != "") & df["resume_path"].notna()),
         "Shortlisted": df["fit_score"].fillna(0) >= min_fit,
-        "All graded": df["fit_score"].notna(),
-        "Everything scored": pd.Series(True, index=df.index),
+        "AI-graded": df["fit_score"].notna(),
+        "All matched": pd.Series(True, index=df.index),
         "In progress": df["status"].isin(["Applied", "Interviewing", "Offer"]),
     }[view]
     if search:
@@ -465,6 +485,7 @@ with tab_jobs:
         "Status": view_df["status"],
         "Fit": view_df["fit_score"],
         "Tailored": view_df["tailored_fit"],
+        "Match": (view_df["match_score"] * 100).round(),
         "Company": view_df["company"],
         "Title": view_df["title"],
         "Posted": posted.dt.tz_localize(None),
@@ -505,6 +526,9 @@ with tab_jobs:
             "Status": st.column_config.TextColumn("Status", width="small"),
             "Fit": st.column_config.NumberColumn("Fit", help="AI fit grade 0-100 for your resume", width="small"),
             "Tailored": st.column_config.NumberColumn("Tailored", help="Fit grade of the tailored resume", width="small"),
+            "Match": st.column_config.NumberColumn("Match", width="small", format="%d",
+                                                   help="Local match of your resume to the posting, 0-100. "
+                                                        "Free and always available; the AI fit grade is the better judge."),
             "Posted": st.column_config.DatetimeColumn("Posted", format="MMM D", help="When the company posted it"),
             "Age (days)": st.column_config.NumberColumn("Age", format="%d d", width="small",
                                                         help="Days since posting; apply early"),
@@ -624,7 +648,14 @@ with tab_jobs:
         st.info("Click a job in the table to open it here.")
         st.stop()
     job = df[df["id"] == open_id].iloc[0]
-    has_docs = job["Docs"] != ""
+    has_docs = isinstance(job["resume_path"], str) and os.path.exists(job["resume_path"])
+    has_letter = isinstance(job["cover_letter_path"], str) and os.path.exists(job["cover_letter_path"])
+    if job.get("doc_status") == "failed":
+        st.error(f"**The last document generation for this job failed.** {job.get('doc_error') or ''}  \n"
+                 + ("Your earlier documents are still here. " if has_docs else "")
+                 + "Use Generate / Regenerate to try again.")
+    elif job.get("doc_status") == "generating":
+        st.info("⏳ Documents for this job are being written now.")
 
     top = st.columns([4, 1, 1, 1])
     top[0].markdown(f"### {job['title']}\n**{job['company']}** · {job['location'] or 'location n/a'} · "
@@ -658,9 +689,10 @@ with tab_jobs:
         with open(job["resume_path"], "rb") as fh:
             a[1].download_button("⬇ Resume", fh.read(), file_name=os.path.basename(job["resume_path"]),
                                  width="stretch")
-        with open(job["cover_letter_path"], "rb") as fh:
-            a[2].download_button("⬇ Cover letter", fh.read(),
-                                 file_name=os.path.basename(job["cover_letter_path"]), width="stretch")
+        if has_letter:
+            with open(job["cover_letter_path"], "rb") as fh:
+                a[2].download_button("⬇ Cover letter", fh.read(),
+                                     file_name=os.path.basename(job["cover_letter_path"]), width="stretch")
         if CAN_OPEN and a[3].button("Open folder", width="stretch"):
             open_local(os.path.dirname(job["resume_path"]))
         extra = []
@@ -775,8 +807,9 @@ with tab_jobs:
                 st.rerun()
 
     with tab_letter:
-        if not has_docs:
-            st.info("No cover letter yet. Use **Generate** above.")
+        if not has_docs or not (has_letter or job["cover_letter_text"]):
+            st.info("No cover letter for this job. Cover letters are optional: turn them on with "
+                    "`writing.cover_letter: true` in config.yaml, then Generate.")
         else:
             text = job["cover_letter_text"] or docx_text(job["cover_letter_path"])
             edited_letter = st.text_area("Cover letter", value=text, height=420, key=f"letter_{open_id}",
@@ -810,9 +843,10 @@ with tab_jobs:
         # The nonce makes every request unique: Streamlit reuses an iframe whose
         # HTML is unchanged, so an identical script would only ever run once.
         st.session_state["scroll_nonce"] = st.session_state.get("scroll_nonce", 0) + 1
-        components.html(f"<!-- {st.session_state['scroll_nonce']} --><script>setTimeout(() => "
-                        "window.parent.document.getElementById('job-details')"
-                        "?.scrollIntoView({behavior: 'smooth', block: 'start'}), 250);</script>", height=0)
+        # Our own script, never user or LLM content: st.iframe runs it with access to the page.
+        st.iframe(f"<!-- {st.session_state['scroll_nonce']} --><script>setTimeout(() => "
+                  "window.parent.document.getElementById('job-details')"
+                  "?.scrollIntoView({behavior: 'smooth', block: 'start'}), 250);</script>", height=1)
 
 
 # ---------------- sidebar ----------------

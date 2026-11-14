@@ -16,6 +16,7 @@ from copilot import autoapply, db, inputs, pipeline, runlock
 from copilot.config import ROOT
 
 TASK = "JobCopilotDaily"
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)     # no console pop-ups on Windows
 
 
 def daily(cfg, say=print):
@@ -75,7 +76,7 @@ def schedule(time_of_day, say=print):
               f"$t = New-ScheduledTaskTrigger -Daily -At '{time_of_day}'; "
               "$s = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries; "
               f"Register-ScheduledTask -TaskName '{TASK}' -Action $a -Trigger $t -Settings $s -Force | Out-Null")
-    subprocess.run(["powershell", "-NoProfile", "-Command", script], check=True)
+    subprocess.run(["powershell", "-NoProfile", "-Command", script], check=True, creationflags=NO_WINDOW)
     say(f"Scheduled: {TASK} every day at {time_of_day}.")
 
 
@@ -87,7 +88,8 @@ def schedule_status():
               "last_run = $(if ($i.LastRunTime -and $i.LastRunTime.Year -gt 2000) { $i.LastRunTime.ToString('ddd MMM d, h:mm tt') }); "
               "last_result = $i.LastTaskResult } | ConvertTo-Json }")
     try:
-        out = subprocess.run(["powershell", "-NoProfile", "-Command", script], capture_output=True, text=True, timeout=20)
+        out = subprocess.run(["powershell", "-NoProfile", "-Command", script], capture_output=True, text=True, timeout=20,
+                             creationflags=NO_WINDOW)
         info = json.loads(out.stdout) if out.stdout.strip() else None
     except (OSError, subprocess.SubprocessError, ValueError):
         return {"registered": None}
@@ -96,5 +98,5 @@ def schedule_status():
 
 def unschedule(say=print):
     subprocess.run(["powershell", "-NoProfile", "-Command",
-                    f"Unregister-ScheduledTask -TaskName '{TASK}' -Confirm:$false"], check=True)
+                    f"Unregister-ScheduledTask -TaskName '{TASK}' -Confirm:$false"], check=True, creationflags=NO_WINDOW)
     say(f"Removed {TASK}.")
