@@ -86,6 +86,11 @@ def _run(cfg, *, fetch_jobs=True, use_llm=True, limit=None, say=print):
                 say(f"AI steps stopped: {exc}")
 
         todays = shortlist.refresh(conn, cfg)
+        if use_llm and "llm_unavailable" not in stats:
+            try:
+                todays = _sponsorship_for_list(cfg, conn, todays, say)
+            except llm.LLMUnavailable as exc:
+                say(f"Sponsorship check for today's list stopped: {exc}")
         stats["todays_list"] = len(todays)
         say(f"Today's list: {len(todays)} jobs" + (f", best: {todays[0]['job']['company']} "
                                                    f"({todays[0]['job']['title']})." if todays else "."))
@@ -171,6 +176,28 @@ def _fetch(cfg, conn, stats, say):
     stats["closed"] = db.mark_closed(conn, ok, {j["id"] for j in jobs})
     conn.commit()
     say(f"  {stats['fetched']:,} postings: {stats['new']:,} new, {stats['closed']} closed since last run.")
+
+
+def _sponsorship_for_list(cfg, conn, picked, say, rounds=3):
+    """Read what each posting on today's list says about visa sponsorship (once per
+    posting, cached). A posting that rules it out leaves the list and the next job
+    moves up, so the check repeats for the newcomers."""
+    lib = library.Resolver(cfg, conn)
+    settings = llm.task_settings(cfg, "sponsorship")
+    for _ in range(rounds):
+        todo = [e["job"] for e in picked if not e["job"].get("sponsorship_basis")]
+        if not todo:
+            break
+        say(f"Checking sponsorship for {len(todo)} job(s) on today's list...")
+        for job in todo:
+            jd = scoring.sponsorship_cached(cfg, job["description"], settings)
+            f = scoring.final(lib.text(lib.for_job(job)), job["description"], job["company"], jd)
+            db.update(conn, job["id"], sponsorship_status=jd["status"], sponsorship_evidence=jd["evidence"],
+                      sponsorship_verified=int(bool(jd["verified"])), sponsorship_basis=f["basis"],
+                      multiplier=f["multiplier"], final_score=f["final"])
+        conn.commit()
+        picked = shortlist.refresh(conn, cfg)
+    return picked
 
 
 def _prefilter(cfg, conn, stats, say):

@@ -86,9 +86,17 @@ streamlit run copilot_app.py
 ## Using the app
 
 1. **Upload** your resume and cover letter. The latest upload becomes the default.
-2. **Run.** It fetches, filters, ranks, and writes documents for your top N jobs (10 by default).
-3. **Click a job** to see the full posting, why it fits, what changed in your resume, the cover letter (editable), and download buttons.
-4. **Apply** with the Apply button, which opens the application form directly, then tick **Applied**.
+2. **Optional: build a resume library** (Setup & run). Add one master resume per kind of job (backend, ML, data engineer...) and choose which roles each is for. Every job is matched, graded and tailored with the resume for its role; roles without one use your default. Your files are never changed.
+3. **Run.** It fetches, filters, ranks and grades. Documents are written when you ask for them.
+4. **Open Today's list:** the 11 jobs worth your time today, chosen from the AI fit grade, how fresh the posting is, sponsorship, and what you were already shown. One per company, at most three of one kind of job; earlier lists are kept.
+5. **Open a job.** Its tabs:
+   - **Overview:** the posting and why it fits.
+   - **Match analysis:** which required and preferred keywords your resume names, what is missing, gaps (years, clearance, citizenship), and suggested edits. The alignment number is keyword coverage, an estimate: not a score from a real applicant tracking system.
+   - **Resume studio** and **Cover letter:** the tailored documents, every change reviewable.
+   - **Company intelligence:** facts about the company, each with a link to its source (the posting, the job board, Wikipedia), and an AI draft of why you fit and why this company. A company point that cites no gathered fact is dropped.
+   - **Project strategy:** the best project already on your resume for this job, and three proposed ideas (a few hours, a few days, a week or more). Proposals are labelled as proposals, never as experience.
+   Company intelligence and project strategy are made when you click **Research this job** (one model call, about a minute on a local model) and then stored.
+6. **Apply** with the Apply button, which opens the application form directly, then tick **Applied**.
 
 **Job statuses**
 
@@ -211,6 +219,7 @@ Everything is set once, in two files:
 streamlit run copilot_app.py           # the app
 python -m copilot run                  # a full run from the terminal (or a scheduler)
 python -m copilot run --no-llm         # fetch and rank only, no API cost
+python -m copilot today [--refresh]    # today's list of 11
 python -m copilot generate <job_id>    # documents for one job
 python -m copilot companies            # check every job board responds
 python -m copilot rescore              # re-rank after changing config.yaml
@@ -283,6 +292,10 @@ copilot/              the pipeline
   auto.py             the daily job, its digest, and the Windows schedule
   embedcache.py       job embeddings on disk (data/embeddings.db, safe to delete)
   bullets.py          per-bullet writing (the task the local model learns)
+  library.py          resume library: a job's role family and the master resume it uses
+  shortlist.py        today's list of 11 (fit, freshness, sponsorship, variety, history)
+  ats.py              matching report: required/preferred keyword coverage, gaps, suggestions
+  intel.py            company facts with sources, why-fit / why-company, project ideas
   training.py         training data: teacher runs, filtering, SFT/preference sets
 training/             fine-tuning scripts (QLoRA on Qwen3-8B)
 extension/            the Chrome extension (content.js fills forms; also used by the runner)
@@ -302,6 +315,9 @@ data/                 your database, documents, and Excel sheet (git-ignored)
 - **A local model is slower and weaker than a hosted one.** Grading takes about 11 s per job on an 8 GB GPU, so a run grades your best 100 matches and leaves the rest for the next run. Its grades agree with Claude Opus at 0.74 (Spearman) on our 24-job benchmark; the hosted model it replaced scored 0.79.
 - **Documents are written on demand**, not for every match (`llm.max_tailor_per_run: 0`). Cover letters are off by default (`writing.cover_letter`).
 
+- **The matching report knows about 150 technical keywords.** A posting that names fewer than four of them gets no alignment number. It counts words, not experience.
+- **Company intelligence is only as good as its sources.** Small companies often have no Wikipedia page, so the facts are the posting's own "about" section and the job board. The why-fit points and project ideas are AI drafts from a local model: read them before you use them.
+- **A resume library entry that is a PDF or DOCX** is structured by the AI the first time a job needs it (a few minutes locally). A `.tex` is read instantly and keeps your layout.
 - **Sponsorship history** uses a list of about 150 large employers, so startups show "Unknown". Public H-1B employer data would fix this.
 - **The resume layout** is a clean single-column Word template. Keeping your exact LaTeX/Overleaf layout is planned.
 - **AI grades vary** by about 6 points between runs. Keyword coverage, counted in code, is the more reliable measure of what tailoring changed.

@@ -550,6 +550,32 @@ with tab_jobs:
         view_df = view_df.sort_values("Rank")
         st.caption(f"{len(view_df)} jobs for {pd.Timestamp.now():%A, %b %d}: fit grade, adjusted for how fresh the "
                    "posting is, sponsorship, and what you were shown before. One per company, a few per kind of job.")
+        if view_df.empty:
+            st.info("Nothing on today's list yet. Run the pipeline (Setup & run) so jobs get an AI fit grade.")
+        for _, card in view_df.iterrows():
+            with st.container(border=True):
+                k = st.columns([0.5, 5, 1, 1.4, 1.2, 1.1, 1.1])
+                k[0].markdown(f"### {int(card['Rank'])}")
+                k[1].markdown(f"**{card['title']}**  \n{card['company']} · {card['location'] or 'location n/a'}  \n"
+                              f":gray[{card['Picked because']}]".replace("$", "\\$"))
+                k[2].metric("Fit", int(card["fit_score"]))
+                k[3].markdown(f"**{card['Role']}**  \n:gray[{card['Resume']} resume]")
+                k[4].markdown(f"**H1B**  \n{card['H1B']}")
+                k[5].markdown(f"**Docs**  \n{card['Docs'] or 'not written'}")
+                if k[6].button("Open", key=f"card_open_{card['id']}", width="stretch"):
+                    st.session_state["open_job"] = card["id"]
+                    st.session_state["scroll_to_job"] = True
+                    st.rerun()
+                k[6].link_button("Apply ↗", card["apply_url"] or card["url"], width="stretch")
+        if len(shortlist.days(conn)) > 1:
+            with st.expander("Earlier lists"):
+                day = st.selectbox("Day", shortlist.days(conn)[1:], key="earlier_day")
+                titles = df.set_index("id")
+                for r in shortlist.stored(conn, day):
+                    if r["job_id"] in titles.index:
+                        j = titles.loc[r["job_id"]]
+                        st.markdown(f"{r['rank']}. **{j['company']}**: {j['title']} · {j['status']} · :gray[{r['why']}]")
+        st.markdown("**The same jobs as a table** (tick boxes to generate documents, autofill or mark applied)")
 
     APPLIED_STATES = ("Applied", "Interviewing", "Offer", "Rejected")
 
@@ -810,10 +836,17 @@ with tab_jobs:
                 st.session_state["scroll_to_job"] = True
                 st.rerun()
 
-    tab_desc, tab_resume, tab_letter, tab_why = st.tabs(
-        ["📄 Job description", "📝 Resume", "✉️ Cover letter", "🔍 Fit & changes"])
+    st.caption(f"Role: **{job['Role']}** · scored and tailored with your **{job['Resume']}** resume"
+               + (f" · today's list #{int(job['Rank'])}" if not pd.isna(job["Rank"]) else ""))
+    tab_desc, tab_why, tab_resume, tab_letter, tab_company, tab_projects = st.tabs(
+        ["📄 Overview", "🔍 Match analysis", "📝 Resume studio", "✉️ Cover letter", "🏢 Company intelligence",
+         "🛠 Project strategy"])
 
     with tab_desc:
+        if job["fit_reason"]:
+            st.markdown(f"**Why this fit:** {job['fit_reason']}".replace("$", "\\$"))
+        if job["dealbreakers"]:
+            st.warning("**Dealbreakers:** " + "; ".join(job["dealbreakers"]))
         st.link_button("Open original posting ↗", job["url"])
         # Escape "$": Streamlit markdown reads "$2B ... $150K" as LaTeX math.
         st.markdown((job["description"] or "").replace("$", "\\$").replace("\n", "  \n"))
@@ -906,15 +939,46 @@ with tab_jobs:
                 st.rerun()
 
     with tab_why:
-        if job["fit_reason"]:
-            st.markdown(f"**Why this fit:** {job['fit_reason']}")
-        if job["dealbreakers"]:
-            st.warning("**Dealbreakers:** " + "; ".join(job["dealbreakers"]))
-        if job["sponsorship_evidence"]:
-            st.caption(f"Sponsorship evidence: “{job['sponsorship_evidence']}”")
+        from copilot import apply as apply_mod, ats
+        family, rpath = job_resume(job)
+        others = {e["label"]: resumes.text(resumes.folder / f) for f, e in resumes.lib.items()
+                  if resumes.folder / f != rpath}
+        years = apply_mod.load_profile(cfg).get("years_experience")
+        try:
+            years = float(years) if years not in (None, "") else None
+        except (TypeError, ValueError):
+            years = None
+        rep_ats = ats.report(resumes.text(rpath), job, others, years=years)
+        req, pref = rep_ats["required"], rep_ats["preferred"]
+        n_req, n_pref = len(req["covered"]) + len(req["missing"]), len(pref["covered"]) + len(pref["missing"])
+        q1, q2, q3, q4 = st.columns(4)
+        q1.metric("Keyword alignment", "n/a" if rep_ats["alignment"] is None else f"{rep_ats['alignment']}/100",
+                  help="Share of the posting's keywords your resume names (required count 3x preferred). An "
+                       "estimate of what a keyword screen sees; not a score from a real applicant tracking system.")
+        q2.metric("Required keywords", f"{len(req['covered'])}/{n_req}")
+        q3.metric("Preferred keywords", f"{len(pref['covered'])}/{n_pref}")
+        q4.metric("AI fit grade", "—" if pd.isna(job["fit_score"]) else int(job["fit_score"]),
+                  help="The AI's read of how well your experience fits the role (not keywords).")
+        st.caption(f"Compared with your **{resumes.label(rpath)}** resume. {rep_ats['note']}"
+                   + (" Too few recognizable keywords in this posting for a percentage." if rep_ats["alignment"] is None
+                      else ""))
+
+        def chips(words):
+            return " ".join(f"`{w}`" for w in words) or "_none_"
         l, r = st.columns(2)
-        l.markdown("**You have:** " + (" ".join(f"`{s}`" for s in job["matched_skills"]) or "_none detected_"))
-        r.markdown("**Missing:** " + (" ".join(f"`{s}`" for s in job["missing_skills"]) or "_nothing missing_"))
+        l.markdown(f"**Required, on your resume:** {chips(req['covered'])}")
+        r.markdown(f"**Required, missing:** {chips(req['missing'])}")
+        l.markdown(f"**Preferred, on your resume:** {chips(pref['covered'])}")
+        r.markdown(f"**Preferred, missing:** {chips(pref['missing'])}")
+        for gap in rep_ats["gaps"]:
+            st.warning(f"**Gap:** this posting {gap}.")
+        if rep_ats["suggestions"]:
+            st.markdown("**Suggested edits** (nothing is added for you; only add what is true)")
+            for s in rep_ats["suggestions"][:8]:
+                st.markdown(f"- `{s['keyword']}` ({s['kind']}): {s['advice']}")
+        st.divider()
+        if isinstance(job["sponsorship_evidence"], str) and job["sponsorship_evidence"].strip():
+            st.caption(f"Sponsorship evidence: “{job['sponsorship_evidence']}”")
         if has_docs:
             flags = [f for f in job["tailor_flags"] if not f.startswith("removed skills")]
             if flags:
@@ -922,6 +986,83 @@ with tab_jobs:
             st.markdown("**What tailoring changed:**")
             for c in job["tailor_changes"]:
                 st.markdown(f"- {c}")
+
+    def research(key):
+        """Company facts + the AI's read, made once per job and resume and then stored."""
+        from copilot import intel
+        _, rpath = job_resume(job)
+        settings = llm.task_settings(cfg, "answer" if "answer" in (cfg.llm.get("tasks") or {}) else "tailor")
+        rkey = resumes.sha(rpath)[:16]
+        found = intel.cached_strategy(conn, job, rkey, settings)
+        if found is None:
+            st.info("Not researched yet. One click gathers what can be verified about the company (with links) and "
+                    "asks the AI, once, why you fit and what to build. About a minute on the local model; "
+                    "the result is saved.")
+            if st.button("🔎 Research this job", key=f"research_{key}_{open_id}", type="primary",
+                         disabled=not can_write):
+                with st.spinner("Gathering company facts and asking the AI (about a minute)..."):
+                    try:
+                        intel.strategy(cfg, conn, job, resumes.text(rpath), rkey,
+                                       llm.preflight(settings, say=lambda *_: None))
+                    except llm.LLMUnavailable as exc:
+                        st.session_state["flash"] = ("error", f"The AI could not be reached: {exc}")
+                    except Exception as exc:  # noqa: BLE001 - shown to the user, never fatal to the page
+                        st.session_state["flash"] = ("error", f"Research failed: {exc}")
+                st.session_state["scroll_to_job"] = True
+                st.rerun()
+        return found, rpath
+
+    with tab_company:
+        from copilot import intel
+        found, rpath = research("company")
+        facts = found["facts"] if found else intel.company_facts(conn, job, online=False)
+        if found:
+            st.markdown("**Why I fit** :gray[(AI draft from your resume: check it before you use it)]")
+            for p in found["why_fit"]:
+                st.markdown(f"- {p}".replace("$", "\\$"))
+            st.markdown("**Why this company**")
+            if not found["why_company"]:
+                st.caption("Nothing here: no point could be tied to a verified fact about the company.")
+            for p in found["why_company"]:
+                src = facts[p["source"] - 1] if p["source"] <= len(facts) else None
+                st.markdown(f"- {p['point']}".replace("$", "\\$")
+                            + (f" ([{src['source']}]({src['url']}))" if src and src["url"] else ""))
+        st.markdown("**What we know about the company** :gray[(every item links to its source)]")
+        if not facts:
+            st.caption("No verified facts found yet. The posting has no company section and nothing was fetched.")
+        for f in facts:
+            st.markdown(f"- {f['text']}".replace("$", "\\$") + (f"  \n  Source: [{f['source']}]({f['url']})"
+                                                               if f["url"] else f"  \n  Source: {f['source']}"))
+        from copilot import ats as ats_mod
+        tailoring = ats_mod.report(resumes.text(rpath), job, {
+            e["label"]: resumes.text(resumes.folder / f) for f, e in resumes.lib.items() if resumes.folder / f != rpath})
+        st.markdown("**How to tailor**")
+        on_file = [s for s in tailoring["suggestions"] if s["on_file"]]
+        if not on_file:
+            st.caption("Nothing to bring over from your other resumes for this posting. Generate a tailored resume "
+                       "to reword what you have toward it.")
+        for s in on_file[:6]:
+            st.markdown(f"- `{s['keyword']}`: {s['advice']}")
+        st.markdown("**What's missing**")
+        missing = [f"`{s['keyword']}` ({s['kind']})" for s in tailoring["suggestions"] if not s["on_file"]]
+        st.markdown((", ".join(missing[:12]) or "_No required or preferred keyword is missing._")
+                    + "".join(f"  \n- This posting {g}." for g in tailoring["gaps"]))
+
+    with tab_projects:
+        found, rpath = research("projects")
+        best = intel.best_existing(resumes.master(rpath).model_dump(), job) if rpath.suffix.lower() == ".tex" else None
+        st.markdown("**Best project you already have** :green[(done, on your resume)]")
+        if best:
+            st.markdown(f"**{untoken(best['name'])}**: it already names {', '.join(f'`{k}`' for k in best['keywords'])} "
+                        "from this posting. Lead with it in the application and in interviews.")
+        else:
+            st.caption("No project or role on this resume names this posting's keywords.")
+        if found:
+            st.markdown("**Ideas to build** :orange[(proposed by the AI: not experience until you build them)]")
+            for idea in found["ideas"]:
+                with st.container(border=True):
+                    st.markdown(f"**{idea['size']}: {idea['title']}**  \n{idea['what']}  \n"
+                                f":gray[Shows: {idea['shows']}]".replace("$", "\\$"))
 
     if st.session_state.pop("scroll_to_job", False):
         # Streamlit has no scroll API; a zero-height script scrolls the parent page.
