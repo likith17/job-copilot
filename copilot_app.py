@@ -18,7 +18,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from copilot import db, export, inputs, latex, llm, pipeline, runlock
+from copilot import db, export, inputs, latex, library, llm, pipeline, runlock, shortlist
 from copilot.latex import untoken
 from copilot.config import load_config
 from copilot.tailor import file_sha
@@ -231,6 +231,63 @@ with tab_setup:
                         inputs.set_current(cfg, kind, pick)
                         st.rerun()
 
+    # ---------------- resume library ----------------
+
+    st.subheader("Resume library")
+    st.caption("One master resume per kind of job. Each job is matched, graded and tailored with the resume for "
+               "its role; a role with no resume of its own uses your default resume above. Your files are never "
+               "changed: tailoring writes copies.")
+    lib_conn = db.connect(cfg.db_path)
+    lib_entries = library.entries(lib_conn)
+    lib_folder = cfg.data_dir / "inputs" / "resume"
+    covered = {r for e in lib_entries.values() for r in e["roles"]}
+    uncovered = [library.FAMILIES[r] for r in library.FAMILIES if r not in covered]
+    if lib_entries and uncovered:
+        st.caption("Using the default resume for: " + ", ".join(uncovered))
+    for lib_file, entry in lib_entries.items():
+        lib_path = lib_folder / lib_file
+        roles_text = ", ".join(library.FAMILIES[r] for r in entry["roles"]) or "not used for any role yet"
+        with st.expander(f"**{entry['label']}**  ·  {roles_text}"):
+            if not lib_path.exists():
+                st.warning(f"The file {lib_file} is missing from your uploads, so this entry is ignored.")
+            e1, e2 = st.columns([1, 2])
+            new_label = e1.text_input("Name", entry["label"], key=f"lib_label_{lib_file}")
+            new_roles = e2.multiselect("Use for these roles", list(library.FAMILIES), default=entry["roles"],
+                                       format_func=library.FAMILIES.get, key=f"lib_roles_{lib_file}",
+                                       help="A role has one resume: choosing it here takes it from any other.")
+            b1, b2, b3, b4 = st.columns(4)
+            if b1.button("Save", key=f"lib_save_{lib_file}", type="primary"):
+                library.assign(lib_conn, lib_file, new_label, new_roles)
+                st.session_state["flash"] = ("info", f"{new_label} saved. The next run re-scores the jobs whose "
+                                                     "resume changed.")
+                st.rerun()
+            if lib_path.exists():
+                b2.download_button("Download", lib_path.read_bytes(), file_name=lib_file, key=f"lib_dl_{lib_file}")
+                if b3.toggle("Preview", key=f"lib_pv_{lib_file}"):
+                    st.text(inputs.read_text(lib_path)[:4000])
+            if b4.button("Remove from library", key=f"lib_rm_{lib_file}",
+                         help="The file stays in your uploads; jobs of its roles go back to the default resume."):
+                library.remove(lib_conn, lib_file)
+                st.rerun()
+    with st.expander("➕  Add a resume to the library"):
+        lib_up = st.file_uploader("Resume (PDF, DOCX, or LaTeX .tex)", type=["pdf", "docx", "tex"], key="up_library")
+        a1, a2 = st.columns([1, 2])
+        add_label = a1.text_input("Name", key="lib_add_label", placeholder="e.g. Backend Engineer")
+        add_roles = a2.multiselect("Use for these roles", list(library.FAMILIES), format_func=library.FAMILIES.get,
+                                   key="lib_add_roles")
+        st.caption("This does not replace your default resume. A PDF or DOCX is read by the AI once, the first "
+                   "time a job needs it; a .tex is read instantly and keeps your layout.")
+        if st.button("Add to library", disabled=lib_up is None):
+            try:
+                added = inputs.save_upload(cfg, "resume", lib_up.name, lib_up.getvalue(), force=True,
+                                           make_default=False)
+                library.assign(lib_conn, added.name, add_label or Path(lib_up.name).stem, add_roles)
+                st.session_state["flash"] = ("info", f"{add_label or lib_up.name} added to your resume library.")
+                st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
+    lib_conn.close()
+
 
 
     # ---------------- 2. run ----------------
@@ -413,8 +470,21 @@ with tab_jobs:
 
     df = pd.DataFrame(jobs)
     df["H1B"] = df["sponsorship_basis"].map(lambda b: H1B.get(b, "Not checked"))
-    current_resume = inputs.current(cfg, "resume")
-    current_sha = file_sha(current_resume) if current_resume else None
+    resumes = library.Resolver(cfg, conn)
+
+
+    def job_resume(row):
+        """(role family, the master resume that role uses now)"""
+        family = row.get("role_family")
+        if not isinstance(family, str):
+            family = library.classify(row["title"], row["description"] if isinstance(row["description"], str) else "")
+        return family, resumes.pick(family)
+
+
+    picked = df.apply(job_resume, axis=1)
+    df["Role"] = picked.map(lambda p: library.FAMILIES[p[0]])
+    df["Resume"] = picked.map(lambda p: resumes.label(p[1]))
+    df["resume_now_sha"] = picked.map(lambda p: resumes.sha(p[1]) if p[1].exists() else None)
 
 
     def docs_state(row):
@@ -426,7 +496,7 @@ with tab_jobs:
         if not (isinstance(p, str) and os.path.exists(p)):
             return ""
         # Packs from before resume tracking have no sha; treat them as current.
-        return "⚠️ old" if row["docs_resume_sha"] and row["docs_resume_sha"] != current_sha else "✅"
+        return "⚠️ old" if row["docs_resume_sha"] and row["docs_resume_sha"] != row["resume_now_sha"] else "✅"
 
 
     df["Docs"] = df.apply(docs_state, axis=1)
@@ -449,16 +519,21 @@ with tab_jobs:
     m[5].metric("Scored", len(df))
 
     f1, f2, f3 = st.columns([2, 2, 1])
-    view = f1.radio("Show", help="**Have documents**: a tailored resume is written. **Shortlisted**: AI fit grade "
+    view = f1.radio("Show", help="**Today's list**: the few jobs worth your time today, chosen from the fit grade, "
+                    "how fresh the posting is, sponsorship, and what you were already shown. **Have documents**: a tailored resume is written. **Shortlisted**: AI fit grade "
                     "at or above your cutoff. **AI-graded**: every job the AI has graded. **All matched**: every job "
                     "that passed the filters and the local match, graded or not. **In progress**: applied or later.",
-                    options=["Have documents", "Shortlisted", "AI-graded", "All matched", "In progress"],
-                    horizontal=True)
+                    options=["Today's list", "Have documents", "Shortlisted", "AI-graded", "All matched",
+                             "In progress"], horizontal=True)
     search = f2.text_input("Search company or title", placeholder="e.g. RL, Anthropic, inference")
     hide_closed = f3.checkbox("Hide closed", value=True)
 
     min_fit = llm.min_fit(cfg)
+    todays = {r["job_id"]: r for r in shortlist.today(conn, cfg)}
+    df["Rank"] = df["id"].map(lambda i: todays[i]["rank"] if i in todays else None)
+    df["Picked because"] = df["id"].map(lambda i: todays[i]["why"] if i in todays else "")
     mask = {
+        "Today's list": df["id"].isin(todays),
         "Have documents": df["Docs"].isin(["✅", "⚠️ old"]) | ((df["Docs"] != "") & df["resume_path"].notna()),
         "Shortlisted": df["fit_score"].fillna(0) >= min_fit,
         "AI-graded": df["fit_score"].notna(),
@@ -471,6 +546,10 @@ with tab_jobs:
     if hide_closed:
         mask &= df["is_active"] == 1
     view_df = df[mask]
+    if view == "Today's list":
+        view_df = view_df.sort_values("Rank")
+        st.caption(f"{len(view_df)} jobs for {pd.Timestamp.now():%A, %b %d}: fit grade, adjusted for how fresh the "
+                   "posting is, sponsorship, and what you were shown before. One per company, a few per kind of job.")
 
     APPLIED_STATES = ("Applied", "Interviewing", "Offer", "Rejected")
 
@@ -488,6 +567,8 @@ with tab_jobs:
         "Match": (view_df["match_score"] * 100).round(),
         "Company": view_df["company"],
         "Title": view_df["title"],
+        "Role": view_df["Role"],
+        "Resume": view_df["Resume"],
         "Posted": posted.dt.tz_localize(None),
         # Days since the company posted it (or since we first saw it, if the board gives no date).
         "Age (days)": ((now - posted.fillna(added)).dt.total_seconds() // 86400).astype("Int64"),
@@ -496,7 +577,8 @@ with tab_jobs:
         "H1B": view_df["H1B"],
         "Docs": view_df["Docs"],
         "Apply": view_df["apply_url"],
-        "Why": view_df["fit_reason"],
+        "Why": view_df["Picked because"].where(view_df["Picked because"] != "", view_df["fit_reason"])
+        if view == "Today's list" else view_df["fit_reason"],
         "id": view_df["id"],
     })
     sort = st.radio("Sort by", ["Best fit", "Newest posted", "Recently added"], horizontal=True,
@@ -535,6 +617,9 @@ with tab_jobs:
             "Added": st.column_config.DatetimeColumn("Added", format="MMM D", help="When Job Copilot found it"),
             "Apply": st.column_config.LinkColumn("Apply", display_text="Apply ↗", width="small"),
             "Docs": st.column_config.TextColumn("Docs", width="small"),
+            "Role": st.column_config.TextColumn("Role", width="small", help="The kind of job, read from its title"),
+            "Resume": st.column_config.TextColumn("Resume", width="small",
+                                                  help="The resume from your library used for this job"),
             "Why": st.column_config.TextColumn("Why", width="large"),
         },
     )

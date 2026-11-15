@@ -70,6 +70,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     revision              INTEGER DEFAULT 0,  -- bumps on every regenerate / revise / edit
     tailor_report         TEXT,               -- JSON: requirements, bullet before/after, keyword coverage
 
+    role_family           TEXT,               -- software | backend | ai | ... (copilot/library.py)
+    resume_file           TEXT,               -- the master resume this job was scored and tailored with
     doc_status            TEXT,               -- generating | ready | failed (documents for this job)
     doc_error             TEXT,               -- why the last generation failed, in full
 

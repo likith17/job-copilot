@@ -288,7 +288,8 @@ def parse(tex):
                 layout["skills"].append({"span": (body_start + m.start(), body_start + m.end() + sep.start()),
                                          "category_latex": m.group(1), "items_latex": items_latex})
         elif "EXPERIENCE" in name and "PROJECT" not in name or "EMPLOYMENT" in name or "WORK" in name:
-            master["experience"], layout["blocks"]["experience"] = _blocks(tex, body_start, body_end, "experience")
+            if not master["experience"]:
+                master["experience"], layout["blocks"]["experience"] = _blocks(tex, body_start, body_end, "experience")
         elif "PROJECT" in name:
             master["projects"], layout["blocks"]["projects"] = _blocks(tex, body_start, body_end, "projects")
         elif "EDUCATION" in name:

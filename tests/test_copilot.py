@@ -358,7 +358,8 @@ def test_resume_change_detection(conn, tmp_path):
     from copilot.pipeline import _check_resume_changed
     resume = tmp_path / "r.pdf"
     resume.write_bytes(b"v1")
-    cfg = SimpleNamespace(resume=resume)
+    from copilot.config import Config
+    cfg = Config(resume=resume, companies=tmp_path / "c.yaml", data_dir=tmp_path)
     db.upsert_seen(conn, job(id="a:1"))
     db.update(conn, "a:1", stage="graded", match_score=0.5, fit_score=60)
     said = []

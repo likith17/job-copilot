@@ -53,6 +53,11 @@ def write_digest(cfg, stats, results, problems, opts):
     lines += [f"**Problems:** {p}" for p in problems] + ([""] if problems else [])
     lines += [f"Crawl: {stats.get('new', 0)} new postings, {stats.get('shortlisted', 0)} shortlisted, "
               f"{stats.get('tailored', 0)} documents written, {stats.get('errors', 0)} errors.", ""]
+    from copilot import shortlist
+    todays = [(r, conn.execute("SELECT company, title, apply_url FROM jobs WHERE id = ?", (r["job_id"],)).fetchone())
+              for r in shortlist.today(conn, cfg)]
+    lines += [f"## Today's {len(todays)}"] + [f"{r['rank']}. {j['company']}: {j['title']} ({r['why']})\n   {j['apply_url']}"
+                                             for r, j in todays if j] + [""]
     if not opts["auto_submit"]:
         lines += ["Sending is off (`apply.auto_submit: false`).", ""]
     lines += [f"## Sent ({len(sent)})"] + [f"- {label(r)}" for r in sent] + [""]

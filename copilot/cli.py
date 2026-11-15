@@ -75,6 +75,8 @@ def main(argv=None):
     p_status.add_argument("--notes")
     sub.add_parser("companies", help="verify every configured board")
     sub.add_parser("retry", help="re-queue failed jobs")
+    p_today = sub.add_parser("today", help="today's shortlist: the 11 jobs worth your time today")
+    p_today.add_argument("--refresh", action="store_true", help="choose the list again from the current grades")
     p_top = sub.add_parser("top", help="list the best tailored jobs")
     p_top.add_argument("-n", type=int, default=15)
     sub.add_parser("serve", help="run the local API for the autofill extension")
@@ -191,6 +193,15 @@ def main(argv=None):
         print(f"Re-queued {db.reset_for_rescore(conn)} jobs. Run `python -m copilot run --no-fetch` to process them.")
     elif args.cmd == "retry":
         print(f"Re-queued {pipeline.retry_errors(conn)} jobs.")
+    elif args.cmd == "today":
+        from copilot import library, shortlist
+        if args.refresh:
+            shortlist.refresh(conn, cfg)
+        for r in shortlist.today(conn, cfg):
+            j = conn.execute("SELECT company, title, role_family, apply_url FROM jobs WHERE id = ?",
+                             (r["job_id"],)).fetchone()
+            print(f"{r['rank']:2}. {j['company']}: {j['title'][:60]}  "
+                  f"[{library.FAMILIES.get(j['role_family'], '?')}]\n    {r['why']}\n    {j['apply_url']}")
     elif args.cmd == "top":
         rows = conn.execute(
             """SELECT company, title, fit_score, sponsorship_basis, apply_url, status FROM jobs

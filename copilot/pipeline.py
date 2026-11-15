@@ -17,7 +17,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
-from copilot import db, export, fetch, inputs, latex, llm, runlock, scoring
+from copilot import library, db, export, fetch, inputs, latex, llm, runlock, scoring, shortlist
 from copilot.documents import render_cover_letter, render_resume, slug
 
 log = logging.getLogger(__name__)
@@ -72,19 +72,23 @@ def _run(cfg, *, fetch_jobs=True, use_llm=True, limit=None, say=print):
                 _grade(cfg, conn, resume_text, stats, say)
                 lap("AI grade")
                 # Never auto-rewrite documents for a job already applied to.
-                shortlist = sorted((j for j in db.jobs_in_stage(conn, "shortlisted") if j["is_active"]
+                ready = sorted((j for j in db.jobs_in_stage(conn, "shortlisted") if j["is_active"]
                                     and j["status"] not in ("Applied", "Interviewing", "Offer", "Rejected")),
                                    key=lambda j: (j["fit_score"] or 0, j["match_score"] or 0), reverse=True)
-                stats["shortlisted"] = len(shortlist)
+                stats["shortlisted"] = len(ready)
                 cap = limit if limit is not None else cfg.llm.get("max_tailor_per_run", 10)
-                if shortlist and cap > 0:
-                    say(f"{len(shortlist)} shortlisted; writing documents for the top {cap}.")
-                    _make_applications(cfg, conn, resume_text, shortlist, cap, force=False, stats=stats, say=say)
+                if ready and cap > 0:
+                    say(f"{len(ready)} shortlisted; writing documents for the top {cap}.")
+                    _make_applications(cfg, conn, resume_text, ready, cap, force=False, stats=stats, say=say)
                 lap("AI documents")
             except llm.LLMUnavailable as exc:
                 stats["llm_unavailable"] = str(exc)
                 say(f"AI steps stopped: {exc}")
 
+        todays = shortlist.refresh(conn, cfg)
+        stats["todays_list"] = len(todays)
+        say(f"Today's list: {len(todays)} jobs" + (f", best: {todays[0]['job']['company']} "
+                                                   f"({todays[0]['job']['title']})." if todays else "."))
         stats["timing_s"] = timing
         stats["llm"] = {**llm.STATS, "seconds": round(llm.STATS["seconds"])}
         db.prune_closed(conn)
@@ -134,16 +138,14 @@ def _generate_for_jobs(cfg, job_ids, say=print, instruction=""):
 def _check_resume_changed(cfg, conn, say):
     """Scores belong to one resume. When it changes, every stored job is
     re-scored against the new one, not just tomorrow's new postings."""
-    from copilot.tailor import file_sha
-
-    sha = file_sha(cfg.resume)
+    sha = library.Resolver(cfg, conn).signature()
     previous = db.get_meta(conn, "resume_sha")
     # A DB scored before this check existed has no record of its resume.
     scored_before = conn.execute("SELECT 1 FROM jobs WHERE match_score IS NOT NULL LIMIT 1").fetchone()
     if previous != sha and (previous or scored_before):
         n = db.reset_for_new_resume(conn)
-        say(f"New resume detected: re-scoring {n} stored jobs against it. "
-            f"Documents written earlier are marked as built from the old resume.")
+        say(f"Your resumes changed: re-scoring {n} stored jobs. Grades for unchanged resume and job "
+            f"pairs are reused; documents from a replaced resume are marked old.")
     if previous != sha:
         db.set_meta(conn, "resume_sha", sha)
 
@@ -193,8 +195,11 @@ def _score(cfg, conn, resume_text, stats, say):
     say(f"Embedding match for {len(pending)} postings (local, free)...")
     floor = cfg.scoring.get("min_match", 0.45)
     min_fit = llm.min_fit(cfg)
+    lib = library.Resolver(cfg, conn, resume_text)
     for i, job in enumerate(pending, 1):
-        score, matched, missing = scoring.match(resume_text, job["description"])
+        family = library.classify(job["title"], job["description"])
+        path = lib.pick(family)
+        score, matched, missing = scoring.match(lib.text(path), job["description"])
         # Keep an existing LLM grade (e.g. after `rescore`): don't pay for it twice.
         if score < floor and job["source"] != "manual":   # manual jobs always reach the grader
             stage = "scored"
@@ -202,7 +207,7 @@ def _score(cfg, conn, resume_text, stats, say):
             stage = "shortlisted" if job["fit_score"] >= min_fit else "graded"
         else:
             stage = "candidate"
-        db.update(conn, job["id"], stage=stage, match_score=score,
+        db.update(conn, job["id"], stage=stage, match_score=score, role_family=family, resume_file=path.name,
                   matched_skills=matched, missing_skills=missing)
         stats["scored"] += 1
         if i % 100 == 0:
@@ -215,14 +220,20 @@ def _grade(cfg, conn, resume_text, stats, say):
     from copilot import grade
 
     # A closed posting can't be applied to: not worth a grade.
+    # Best local matches first, fresh postings ahead of equally good older ones: the
+    # grader's time goes to jobs that can make today's shortlist.
     candidates = sorted((j for j in db.jobs_in_stage(conn, "candidate") if j["is_active"]),
-                        key=lambda j: j["match_score"], reverse=True)
+                        key=shortlist.grade_priority, reverse=True)
     settings = llm.task_settings(cfg, "grade")
     min_fit = llm.min_fit(cfg)
-    resume_key = db.text_key(resume_text)
+    lib = library.Resolver(cfg, conn, resume_text)
+
+    def resume_for(job):
+        return lib.text(lib.for_job(job))
 
     def cache_key(job):
-        return f"grade:{settings.get('model')}:{settings.get('method', 'direct')}:{resume_key}:{db.text_key(job['description'])}"
+        return (f"grade:{settings.get('model')}:{settings.get('method', 'direct')}:"
+                f"{db.text_key(resume_for(job))}:{db.text_key(job['description'])}")
 
     # A grade depends only on the resume, the posting and the model: going back to a
     # resume graded before costs nothing.
@@ -248,10 +259,10 @@ def _grade(cfg, conn, resume_text, stats, say):
     # if the provider is unavailable instead of failing the whole batch.
     pool = ThreadPoolExecutor(max_workers=workers)
     try:
-        futures = {pool.submit(grade.grade, resume_text, j, settings): j for j in todo[:1]}
+        futures = {pool.submit(grade.grade, resume_for(j), j, settings): j for j in todo[:1]}
         for fut in as_completed(futures):
             _save_grade(conn, futures[fut], fut, min_fit, stats, cache_key)
-        futures = {pool.submit(grade.grade, resume_text, j, settings): j for j in todo[1:]}
+        futures = {pool.submit(grade.grade, resume_for(j), j, settings): j for j in todo[1:]}
         for i, fut in enumerate(as_completed(futures), 2):
             _save_grade(conn, futures[fut], fut, min_fit, stats, cache_key)
             if i % 25 == 0:
@@ -286,10 +297,10 @@ def _make_applications(cfg, conn, resume_text, jobs, cap, *, force, stats, say, 
 
     ctx = {
         "cfg": cfg,
-        "resume_text": resume_text,
-        "master": tailor.load_or_build_master(cfg, resume_text, log=say),
+        "lib": library.Resolver(cfg, conn, resume_text),
+        "say": say,
+        "base_pages": {},
         "base_letter": inputs.read_text(cfg.cover_letter) if cfg.cover_letter else "",
-        "resume_sha": tailor.file_sha(cfg.resume),
         "force": force,
         "instruction": instruction,
         # Checked once per run: the writer model, or its fallback if it can't serve.
@@ -356,7 +367,10 @@ def _application(ctx, job):
     returns the DB updates instead of writing them."""
     from copilot import grade, tailor
 
-    cfg, resume_text, master = ctx["cfg"], ctx["resume_text"], ctx["master"]
+    cfg, lib = ctx["cfg"], ctx["lib"]
+    source = lib.for_job(job)                 # this job family's master resume
+    with ctx_lock:
+        resume_text, master = lib.text(source), lib.master(source, log=ctx["say"])
     llm_cfg = cfg.llm
     grade_settings = llm.task_settings(cfg, "grade")
     updates = {}
@@ -408,11 +422,11 @@ def _application(ctx, job):
     stem = slug(job["company"], 20)
     letter_path = folder / f"{name}_Cover_Letter_{stem}.docx" if letter else None
     tex_path = None
-    if cfg.resume.suffix.lower() == ".tex":
+    if source.suffix.lower() == ".tex":
         # Your own LaTeX layout: edits written back into the source, compiled to PDF.
         try:
             resume, tex_path, resume_path, review_path = _render_latex(
-                ctx, master.model_dump(), resume, report, folder, f"{name}_Resume_{stem}")
+                ctx, source, master.model_dump(), resume, report, folder, f"{name}_Resume_{stem}")
         except latex.LaTeXError as exc:
             flags.append(f"LaTeX build failed ({exc}); a Word version was made instead")
             tex_path = None
@@ -449,7 +463,7 @@ def _application(ctx, job):
                    review_resume_path=str(review_path),
                    resume_tex_path=str(tex_path) if tex_path else None,
                    tailor_flags=flags, tailor_changes=changes, tailored_at=db.now(),
-                   docs_resume_sha=ctx["resume_sha"], error=None,
+                   docs_resume_sha=lib.sha(source), resume_file=source.name, role_family=lib.family(job), error=None,
                    tailored_resume=resume, cover_letter_text=letter, tailor_report=report,
                    revision=(job.get("revision") or 0) + 1)
     # Regenerating never rolls back progress the user recorded (Applied, ...).
@@ -535,7 +549,7 @@ def _changed_texts(report, resume, master):
     return frozenset(changed)
 
 
-def _render_latex(ctx, master, resume, report, folder, stem, max_rollbacks=6):
+def _render_latex(ctx, source, master, resume, report, folder, stem, max_rollbacks=6):
     """Write the tailored resume into the candidate's own .tex and compile it.
 
     The page count must not grow: if it does, the accepted edits that added the
@@ -544,24 +558,24 @@ def _render_latex(ctx, master, resume, report, folder, stem, max_rollbacks=6):
     """
     from copilot import tailor
 
-    tex = ctx["cfg"].resume.read_text(encoding="utf-8")
-    if "base_pages" not in ctx:
-        with ctx_lock:
-            if "base_pages" not in ctx:
-                ctx["base_pages"] = latex.compile_pdf(tex, folder / "_original_check.pdf")
-                (folder / "_original_check.pdf").unlink(missing_ok=True)
+    tex = source.read_text(encoding="utf-8")
+    with ctx_lock:        # each master resume's own page count, measured once per run
+        if source not in ctx["base_pages"]:
+            ctx["base_pages"][source] = latex.compile_pdf(tex, folder / "_original_check.pdf")
+            (folder / "_original_check.pdf").unlink(missing_ok=True)
+    base_pages = ctx["base_pages"][source]
     pdf = folder / f"{stem}.pdf"
     for _ in range(max_rollbacks + 1):
         out = latex.render(tex, master, resume)
         pages = latex.compile_pdf(out, pdf)
-        if pages <= ctx["base_pages"] or not report["accepted"]:
+        if pages <= base_pages or not report["accepted"]:
             break
         # Roll back the edit that grew the most, then try again.
         worst = max(report["accepted"], key=lambda a: len(a["after"]) - len(a["before"]))
         tailor._replace_bullet(resume, tailor.bullet_ids(master)[worst["id"]][0], worst["after"], worst["before"])
         report["accepted"].remove(worst)
         report["rejected"].append({"id": worst["id"], "proposed": worst["after"],
-                                   "why": f"rolled back to keep the resume at {ctx['base_pages']} page(s)"})
+                                   "why": f"rolled back to keep the resume at {base_pages} page(s)"})
     tex_path = folder / f"{stem}.tex"
     tex_path.write_text(out, encoding="utf-8")
     review_pdf = folder / f"REVIEW_changes_in_bold_{stem}.pdf"
@@ -591,9 +605,12 @@ def add_manual_job(cfg, *, company, title, description, url="", location="", gen
                 "apply_url": url.strip(), "description": description.strip(), "posted_at": db.now()})
             conn.commit()
 
-            resume_text = inputs.read_text(cfg.resume)
+            lib = library.Resolver(cfg, conn)
+            family = library.classify(title, description)
+            resume_text = lib.text(lib.pick(family))
             score, matched, missing = scoring.match(resume_text, description)
-            db.update(conn, job_id, stage="candidate", match_score=score,
+            db.update(conn, job_id, stage="candidate", match_score=score, role_family=family,
+                      resume_file=lib.pick(family).name,
                       matched_skills=matched, missing_skills=missing, filter_reason=None)
             conn.commit()
             say(f"Match {score:.2f}; {len(matched)} of the posting's skills on your resume.")
@@ -669,13 +686,20 @@ def _rerender(cfg, job, resume, report):
     """Rebuild a pack's resume files after a feedback change."""
     from copilot import tailor
 
-    master = json.loads(cfg.master_resume_path.read_text(encoding="utf-8"))
-    master.pop("_source_sha256", None)
+    conn = db.connect(cfg.db_path)
+    lib = library.Resolver(cfg, conn)
+    conn.close()
+    source = lib.for_job(job)
+    if source.suffix.lower() == ".tex":
+        master = lib.master(source).model_dump()
+    else:       # a PDF or DOCX master was structured once and cached
+        master = json.loads(cfg.master_resume_path.read_text(encoding="utf-8"))
+        master.pop("_source_sha256", None)
     changed = _changed_texts(report, resume, master)
     if job.get("resume_tex_path"):
-        if tailor.file_sha(cfg.resume) != job["docs_resume_sha"]:
+        if lib.sha(source) != job["docs_resume_sha"]:
             raise ValueError("Your resume changed since this pack was made; click Regenerate instead.")
-        tex = cfg.resume.read_text(encoding="utf-8")
+        tex = source.read_text(encoding="utf-8")
         out = latex.render(tex, master, resume)
         Path(job["resume_tex_path"]).write_text(out, encoding="utf-8")
         latex.compile_pdf(out, job["resume_path"])

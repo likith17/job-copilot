@@ -42,6 +42,7 @@ class Config:
     writing: dict = field(default_factory=lambda: copy.deepcopy(DEFAULT_WRITING))
     excel: str = "jobs.xlsx"
     apply: dict = field(default_factory=dict)
+    shortlist: dict = field(default_factory=dict)
     cover_letter: Path = None   # set from uploads by inputs.apply()
 
     @property
@@ -89,6 +90,7 @@ def load_config(path=None):
         writing=_merge(DEFAULT_WRITING, raw.get("writing")),
         excel=raw.get("excel", "jobs.xlsx"),
         apply=raw.get("apply") or {},
+        shortlist=raw.get("shortlist") or {},
     )
     cfg.data_dir.mkdir(parents=True, exist_ok=True)
     return cfg

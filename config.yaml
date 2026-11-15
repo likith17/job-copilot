@@ -12,7 +12,7 @@ prefilter:
   # ...and none of the exclude terms. "II" roles are kept on purpose (3 YOE + MS fits them).
   title_exclude: [senior, sr., staff, principal, lead, manager, management, director, head, vp, intern, internship,
                   architect, distinguished, fellow, iii, iv, recruiter, sales, account, solutions, support, sre,
-                  forward deployed, security, hardware, mechanical, electrical, firmware, analog, rf, phd,
+                  security, hardware, mechanical, electrical, firmware, analog, rf, phd,
                   grant, grants, fund, scholarship, talent community, general application]
   # Job is kept if the location looks US-based or remote-US.
   us_only: true
@@ -25,6 +25,13 @@ prefilter:
 scoring:
   min_match: 0.45   # embedding+skills match (local, free) needed to reach the LLM grader
   min_fit: 70       # LLM fit grade (0-100) needed to be shortlisted for tailoring
+
+# ---- Today's shortlist: the few jobs worth your time each day (copilot/shortlist.py) ----
+shortlist:
+  size: 11          # jobs on the daily list
+  min_fit: 60       # lowest AI fit grade that can appear on it
+  per_company: 1    # a second job from one company only fills a short list
+  per_family: 3     # at most this many of one kind of job, unless the list would be short
 
 # ---- Stage 3: AI work ----
 llm:

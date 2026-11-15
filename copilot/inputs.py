@@ -47,8 +47,9 @@ def looks_generated(cfg, filename, data):
     return False
 
 
-def save_upload(cfg, kind, filename, data: bytes, force=False):
-    """Store an uploaded file and make it the default for `kind`."""
+def save_upload(cfg, kind, filename, data: bytes, force=False, make_default=True):
+    """Store an uploaded file and, unless make_default is off (a resume added to the
+    library for some roles only), make it the default for `kind`."""
     if kind not in KINDS:
         raise ValueError(kind)
     suffix = Path(filename).suffix.lower()
@@ -63,7 +64,8 @@ def save_upload(cfg, kind, filename, data: bytes, force=False):
     stem = re.sub(r"[^A-Za-z0-9_-]+", "_", Path(filename).stem)[:60]
     path = folder / f"{datetime.now():%Y-%m-%d_%H%M%S}_{stem}{suffix}"
     path.write_bytes(data)
-    set_current(cfg, kind, path)
+    if make_default:
+        set_current(cfg, kind, path)
     return path
 
 

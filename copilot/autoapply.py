@@ -220,7 +220,11 @@ def _run(cfg, submit_ok, url, limit, unattended, say, job_ids=None):
 
     opts = settings(cfg)
     conn = db.connect(cfg.db_path)
-    resume_sha = tailor.file_sha(cfg.resume)
+    from copilot import library
+    lib = library.Resolver(cfg, conn)
+
+    def resume_sha(job):
+        return lib.sha(lib.for_job(job)) if job else None
     wanted = limit or opts["per_run"]
     if url:
         jobs = [None]
@@ -233,12 +237,12 @@ def _run(cfg, submit_ok, url, limit, unattended, say, job_ids=None):
         # Never upload documents from an older resume, or apply twice.
         stale = {"documents were built from an older resume", "status is Applied", "status is Interviewing",
                  "status is Offer", "status is Rejected", "status is Skipped"}
-        ok = [j for j in pool if not (stale & set(job_gates(j, opts, resume_sha)))]
+        ok = [j for j in pool if not (stale & set(job_gates(j, opts, resume_sha(j))))]
         for j in pool:
             if j not in ok:
-                say(f"Skipped {j['company']}: {'; '.join(stale & set(job_gates(j, opts, resume_sha)))}. "
+                say(f"Skipped {j['company']}: {'; '.join(stale & set(job_gates(j, opts, resume_sha(j))))}. "
                     "Regenerate its documents first.")
-        jobs = [j for j in ok if not (unattended and job_gates(j, opts, resume_sha))][:wanted if not job_ids else None]
+        jobs = [j for j in ok if not (unattended and job_gates(j, opts, resume_sha(j)))][:wanted if not job_ids else None]
     if not jobs:
         say("No jobs ready to apply to. Run the pipeline or generate documents first.")
         return []
@@ -259,7 +263,7 @@ def _run(cfg, submit_ok, url, limit, unattended, say, job_ids=None):
             state = fill_page(page, target, opts["wait_secs"])
             if job is None and state.get("job"):
                 job = db.decode(conn.execute("SELECT * FROM jobs WHERE id = ?", (state["job"]["id"],)).fetchone())
-            why = gates(job, state, opts, db.applications_today(conn), resume_sha,
+            why = gates(job, state, opts, db.applications_today(conn), resume_sha(job),
                         db.company_applications_today(conn, job["company"]) if job else 0)
             if submit_ok and stopped(cfg):
                 why.append(f"paused ({stop_file(cfg).name} exists)")

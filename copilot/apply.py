@@ -192,7 +192,9 @@ def answer_question(cfg, conn, question, job=None, kind="text", options=None, se
     if settings is None:
         settings = llm.preflight(llm.task_settings(cfg, "answer" if "answer" in (cfg.llm.get("tasks") or {})
                                                    else "tailor"), say=lambda *_: None)
-    master = tailor.load_or_build_master(cfg, inputs.read_text(cfg.resume), log=lambda *_: None).model_dump()
+    from copilot import library
+    lib = library.Resolver(cfg, conn)            # the resume this job was tailored from
+    master = lib.master(lib.for_job(job) if job else lib.cfg.resume, log=lambda *_: None).model_dump()
     resume = tailor.resume_to_text(master)
     story = read_story(cfg)
     letter = inputs.read_text(cfg.cover_letter) if cfg.cover_letter else ""
