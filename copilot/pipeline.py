@@ -195,7 +195,7 @@ def _sponsorship_for_list(cfg, conn, picked, say, rounds=3):
             db.update(conn, job["id"], sponsorship_status=jd["status"], sponsorship_evidence=jd["evidence"],
                       sponsorship_verified=int(bool(jd["verified"])), sponsorship_basis=f["basis"],
                       multiplier=f["multiplier"], final_score=f["final"])
-        conn.commit()
+            conn.commit()     # the sponsorship cache writes on its own connection: never hold a write open
         picked = shortlist.refresh(conn, cfg)
     return picked
 
