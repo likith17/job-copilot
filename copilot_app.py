@@ -288,6 +288,19 @@ with tab_setup:
                 st.error(str(exc))
     lib_conn.close()
 
+    with st.expander("🧪  Projects not on every resume"):
+        st.caption("Your other real projects (`data/inputs/projects.md`). Start each with `## Name`. The matching report "
+                   "points to them when a posting asks for something only they show, and Project strategy lists them "
+                   "as done work. Keep every number one you can back up.")
+        proj_path = inputs.projects_path(cfg)
+        proj_text = st.text_area("Projects", proj_path.read_text(encoding="utf-8") if proj_path.exists() else "",
+                                 height=260, key="projects_text", label_visibility="collapsed")
+        if st.button("Save projects", key="save_projects"):
+            proj_path.parent.mkdir(parents=True, exist_ok=True)
+            proj_path.write_text(proj_text.strip() + "\n", encoding="utf-8")
+            st.session_state["flash"] = ("success", f"Saved {len(inputs.projects(cfg))} projects.")
+            st.rerun()
+
 
 
     # ---------------- 2. run ----------------
@@ -428,10 +441,11 @@ def _autofill_info():
         with t_story:
             from copilot import apply
             st.caption("Why you do this work, what you want to build next, the problems and kinds of companies that "
-                       "draw you, and why. One long paragraph is fine. It's used, with your cover letter and resume, "
-                       "to answer questions like **\"Why this company?\"**: each answer connects what the posting "
-                       "says about the company to your own words, and is fact-checked before it can go out. "
-                       "Stays on this computer.")
+                       "draw you, and why. It's used, with your resume, to answer questions like **\"Why this "
+                       "company?\"**, fact-checked before it can go out. Stays on this computer.  \n"
+                       "**It is also your cover letter** when it contains `[Role]` and `[Company]`: every word is kept, "
+                       "those two are filled in, and a bracketed *company-specific sentence* is written per job from "
+                       "the posting (and left out if the fact-check flags it).")
             story = st.text_area("Your story", apply.read_story(cfg), height=320, key="story_text",
                                  label_visibility="collapsed",
                                  placeholder="I got into machine learning because... What I want to build next is... "
@@ -470,7 +484,17 @@ with tab_jobs:
 
     df = pd.DataFrame(jobs)
     df["H1B"] = df["sponsorship_basis"].map(lambda b: H1B.get(b, "Not checked"))
+    df["region"] = df["region"].fillna("us") if "region" in df else "us"
+    df["Level"] = df["level"].fillna("") if "level" in df else ""
     resumes = library.Resolver(cfg, conn)
+
+
+    def other_sources(rpath):
+        """Text to point to for a missing keyword: your other library resumes and your projects file."""
+        out = {f"{e['label']} resume": resumes.text(resumes.folder / f) for f, e in resumes.lib.items()
+               if resumes.folder / f != rpath and (resumes.folder / f).exists()}
+        out.update({f"{n.split(':')[0]} project": t for n, t in inputs.projects(cfg).items()})
+        return out
 
 
     def job_resume(row):
@@ -518,6 +542,14 @@ with tab_jobs:
     m[4].metric("Interviewing", int((df["status"] == "Interviewing").sum()))
     m[5].metric("Scored", len(df))
 
+    region_names = {"us": "🇺🇸 United States", "world": "🌍 Rest of the world"}
+    enabled = shortlist.regions(cfg)
+    region_pick = st.radio("Region", [r for r in region_names if r in enabled] + (["both"] if len(enabled) > 1 else []),
+                           format_func=lambda r: region_names.get(r, "Both"), horizontal=True, key="region_pick",
+                           help="Each region has its own daily list. Set the regions you search in config.yaml "
+                                "(prefilter.regions).")
+    if region_pick != "both":
+        df = df[df["region"] == region_pick]
     f1, f2, f3 = st.columns([2, 2, 1])
     view = f1.radio("Show", help="**Today's list**: the few jobs worth your time today, chosen from the fit grade, "
                     "how fresh the posting is, sponsorship, and what you were already shown. **Have documents**: a tailored resume is written. **Shortlisted**: AI fit grade "
@@ -529,7 +561,7 @@ with tab_jobs:
     hide_closed = f3.checkbox("Hide closed", value=True)
 
     min_fit = llm.min_fit(cfg)
-    todays = {r["job_id"]: r for r in shortlist.today(conn, cfg)}
+    todays = {r["job_id"]: r for r in shortlist.today(conn, cfg, None if region_pick == "both" else region_pick)}
     df["Rank"] = df["id"].map(lambda i: todays[i]["rank"] if i in todays else None)
     df["Picked because"] = df["id"].map(lambda i: todays[i]["why"] if i in todays else "")
     mask = {
@@ -547,7 +579,7 @@ with tab_jobs:
         mask &= df["is_active"] == 1
     view_df = df[mask]
     if view == "Today's list":
-        view_df = view_df.sort_values("Rank")
+        view_df = view_df.assign(_r=view_df["region"] != "us").sort_values(["_r", "Rank"]).drop(columns="_r")
         st.caption(f"{len(view_df)} jobs for {pd.Timestamp.now():%A, %b %d}: fit grade, adjusted for how fresh the "
                    "posting is, sponsorship, and what you were shown before. One per company, a few per kind of job.")
         if view_df.empty:
@@ -556,11 +588,12 @@ with tab_jobs:
             with st.container(border=True):
                 k = st.columns([0.5, 5, 1, 1.4, 1.2, 1.1, 1.1])
                 k[0].markdown(f"### {int(card['Rank'])}")
-                k[1].markdown(f"**{card['title']}**  \n{card['company']} · {card['location'] or 'location n/a'}  \n"
+                k[1].markdown(f"**{card['title']}**  \n{card['company']} · {card['location'] or 'location n/a'}"
+                              + (f" · {card['Level']}" if card["Level"] else "") + "  \n"
                               f":gray[{card['Picked because']}]".replace("$", "\\$"))
                 k[2].metric("Fit", int(card["fit_score"]))
                 k[3].markdown(f"**{card['Role']}**  \n:gray[{card['Resume']} resume]")
-                k[4].markdown(f"**H1B**  \n{card['H1B']}")
+                k[4].markdown(f"**Visa**  \n{card['H1B']}")
                 k[5].markdown(f"**Docs**  \n{card['Docs'] or 'not written'}")
                 if k[6].button("Open", key=f"card_open_{card['id']}", width="stretch"):
                     st.session_state["open_job"] = card["id"]
@@ -593,6 +626,7 @@ with tab_jobs:
         "Match": (view_df["match_score"] * 100).round(),
         "Company": view_df["company"],
         "Title": view_df["title"],
+        "Level": view_df["Level"],
         "Role": view_df["Role"],
         "Resume": view_df["Resume"],
         "Posted": posted.dt.tz_localize(None),
@@ -775,7 +809,7 @@ with tab_jobs:
                   delta=None if pd.isna(job["tailored_fit"]) or pd.isna(job["fit_score"])
                   else int(job["tailored_fit"] - job["fit_score"]))
     top[2].metric("Match", "—" if pd.isna(job["match_score"]) else f"{job['match_score']:.2f}")
-    top[3].markdown(f"**H1B**  \n{job['H1B']}")
+    top[3].markdown(f"**Visa**  \n{job['H1B']}")
 
     s1, s2, s3 = st.columns([1, 1, 3])
     # Seed widget state from the DB each run, so edits made elsewhere (the table's
@@ -941,8 +975,7 @@ with tab_jobs:
     with tab_why:
         from copilot import apply as apply_mod, ats
         family, rpath = job_resume(job)
-        others = {e["label"]: resumes.text(resumes.folder / f) for f, e in resumes.lib.items()
-                  if resumes.folder / f != rpath}
+        others = other_sources(rpath)
         years = apply_mod.load_profile(cfg).get("years_experience")
         try:
             years = float(years) if years not in (None, "") else None
@@ -1034,8 +1067,7 @@ with tab_jobs:
             st.markdown(f"- {f['text']}".replace("$", "\\$") + (f"  \n  Source: [{f['source']}]({f['url']})"
                                                                if f["url"] else f"  \n  Source: {f['source']}"))
         from copilot import ats as ats_mod
-        tailoring = ats_mod.report(resumes.text(rpath), job, {
-            e["label"]: resumes.text(resumes.folder / f) for f, e in resumes.lib.items() if resumes.folder / f != rpath})
+        tailoring = ats_mod.report(resumes.text(rpath), job, other_sources(rpath))
         st.markdown("**How to tailor**")
         on_file = [s for s in tailoring["suggestions"] if s["on_file"]]
         if not on_file:
@@ -1050,9 +1082,13 @@ with tab_jobs:
 
     with tab_projects:
         found, rpath = research("projects")
-        best = intel.best_existing(resumes.master(rpath).model_dump(), job) if rpath.suffix.lower() == ".tex" else None
-        st.markdown("**Best project you already have** :green[(done, on your resume)]")
-        if best:
+        best = intel.best_existing(resumes.master(rpath).model_dump(), job, inputs.projects(cfg)) \
+            if rpath.suffix.lower() == ".tex" else None
+        st.markdown("**Best project you already have** :green[(done)]")
+        if best and best["kind"] == "project not on this resume":
+            st.markdown(f"**{best['name']}** (in your projects file, **not on this resume**): it names "
+                        f"{', '.join(f'`{k}`' for k in best['keywords'])} from this posting. Consider swapping it in.")
+        elif best:
             st.markdown(f"**{untoken(best['name'])}**: it already names {', '.join(f'`{k}`' for k in best['keywords'])} "
                         "from this posting. Lead with it in the application and in interviews.")
         else:

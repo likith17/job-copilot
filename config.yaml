@@ -11,7 +11,7 @@ prefilter:
   title_include: [engineer, engineering, scientist, developer, machine learning, ml, ai, llm, nlp, data, applied, research, computer vision]
   # ...and none of the exclude terms. Early-career search: internships, new grad, and "I"/"II" roles
   # (3 YOE + MS fits them) stay in; senior titles are out.
-  title_exclude: [senior, sr., staff, principal, lead, manager, management, director, head, vp,
+  title_exclude: [senior, sr., sr, staff, principal, lead, manager, management, director, head, vp,
                   architect, distinguished, fellow, iii, iv, recruiter, sales, account, solutions, support, sre,
                   security, hardware, mechanical, electrical, firmware, analog, rf, phd,
                   grant, grants, fund, scholarship, talent community, general application]
