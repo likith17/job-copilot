@@ -45,7 +45,7 @@ def test_gaps_years_and_blockers():
 
 
 def test_suggestions_never_invent_experience():
-    r = ats.report(RESUME, {"description": POSTING}, other_resumes={"Data Engineer": "Kafka pipelines on AWS."})
+    r = ats.report(RESUME, {"description": POSTING}, other_resumes={"Data Engineer resume": "Kafka pipelines on AWS."})
     by = {s["keyword"]: s for s in r["suggestions"]}
     assert by["aws"]["on_file"] and "Data Engineer" in by["aws"]["advice"]
     assert not by["spark"]["on_file"] and "only if" in by["spark"]["advice"]

@@ -97,6 +97,26 @@ def history(cfg, kind):
     return sorted(folder.glob("*"), reverse=True) if folder.exists() else []
 
 
+def projects_path(cfg):
+    return _dir(cfg) / "projects.md"
+
+
+def projects(cfg):
+    """{project name: its text} from data/inputs/projects.md: your work that is not on
+    every resume. "## " starts a project; lines starting with "#" alone are notes."""
+    p = projects_path(cfg)
+    if not p.exists():
+        return {}
+    out, name = {}, None
+    for line in p.read_text(encoding="utf-8").splitlines():
+        if line.startswith("## "):
+            name = line[3:].strip()
+            out[name] = ""
+        elif name and not line.startswith("# "):
+            out[name] += line + "\n"
+    return {k: v.strip() for k, v in out.items() if v.strip()}
+
+
 def apply(cfg):
     """A copy of cfg pointing at the current uploads."""
     return dataclasses.replace(cfg, resume=current(cfg, "resume") or cfg.resume,

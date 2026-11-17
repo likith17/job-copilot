@@ -18,8 +18,11 @@ SIZE = 11
 DEFAULTS = {"size": SIZE, "min_fit": 60, "per_company": 1, "per_family": 3}
 DONE = ("Applied", "Interviewing", "Offer", "Rejected", "Skipped")
 SCHEMA = """CREATE TABLE IF NOT EXISTS shortlist (
-    day TEXT NOT NULL, job_id TEXT NOT NULL, rank INTEGER NOT NULL, score REAL, why TEXT,
+    day TEXT NOT NULL, job_id TEXT NOT NULL, rank INTEGER NOT NULL, score REAL, why TEXT, region TEXT,
     PRIMARY KEY (day, job_id))"""
+REGIONS = {"us": "United States", "world": "Rest of the world"}
+# Titles that say the role is for you rank a little higher.
+LEVEL_POINTS = {"intern": (3, "internship"), "new grad": (3, "early-career title")}
 # (posted within this many days, points, what to tell you)
 FRESH = [(1, 10, "posted in the last 24 hours"), (3, 7, "posted in the last 3 days"), (7, 3, "posted this week"),
          (14, 0, ""), (30, -4, "posted over two weeks ago")]
@@ -72,7 +75,8 @@ def same_role_key(job):
 def score(job, days_shown=0, now=None):
     """(points, [reasons]). The fit grade, adjusted for freshness, sponsorship and repeats."""
     points, why = float(job.get("fit_score") or 0), [f"fit {int(job.get('fit_score') or 0)}"]
-    for extra, text in (freshness(job, now), SPONSOR.get(job.get("sponsorship_basis"), (0, ""))):
+    for extra, text in (freshness(job, now), SPONSOR.get(job.get("sponsorship_basis"), (0, "")),
+                        LEVEL_POINTS.get(job.get("level"), (0, ""))):
         points += extra
         if text:
             why.append(text)
@@ -119,35 +123,55 @@ def _today():
     return date.today().isoformat()
 
 
-def refresh(conn, cfg, day=None, now=None):
-    """Choose today's list again from the current grades and store it."""
+def _schema(conn):
     conn.execute(SCHEMA)
+    if "region" not in {r[1] for r in conn.execute("PRAGMA table_info(shortlist)")}:
+        conn.execute("ALTER TABLE shortlist ADD COLUMN region TEXT")
+
+
+def regions(cfg):
+    """The regions you search: config prefilter.regions, US only by default."""
+    rules = getattr(cfg, "prefilter", None) or {}
+    return [r for r in (rules.get("regions") or ["us"]) if r in REGIONS]
+
+
+def refresh(conn, cfg, day=None, now=None):
+    """Choose today's lists again (one per region) from the current grades and store them.
+    Returns every picked entry, US first."""
+    _schema(conn)
     day = day or _today()
     shown = {r["job_id"]: r["n"] for r in conn.execute(
         "SELECT job_id, COUNT(*) AS n FROM shortlist WHERE day < ? GROUP BY job_id", (day,))}
-    jobs = [j for j in db.jobs_in_stage(conn, "graded", "shortlisted", "tailored")]
-    picked = build(jobs, shown, options(cfg), now)
+    jobs = db.jobs_in_stage(conn, "graded", "shortlisted", "tailored")
     conn.execute("DELETE FROM shortlist WHERE day = ?", (day,))
-    conn.executemany("INSERT INTO shortlist (day, job_id, rank, score, why) VALUES (?, ?, ?, ?, ?)",
-                     [(day, e["job"]["id"], i, e["score"], "; ".join(e["why"])) for i, e in enumerate(picked, 1)])
+    picked = []
+    for region in regions(cfg):
+        mine = build([j for j in jobs if (j.get("region") or "us") == region], shown, options(cfg), now)
+        conn.executemany("INSERT INTO shortlist (day, job_id, rank, score, why, region) VALUES (?, ?, ?, ?, ?, ?)",
+                         [(day, e["job"]["id"], i, e["score"], "; ".join(e["why"]), region)
+                          for i, e in enumerate(mine, 1)])
+        picked += [{**e, "region": region} for e in mine]
     conn.commit()
     return picked
 
 
-def stored(conn, day=None):
-    """A day's list as stored: [{"job_id", "rank", "score", "why"}] (empty if none was made)."""
-    conn.execute(SCHEMA)
-    return [dict(r) for r in conn.execute(
-        "SELECT job_id, rank, score, why FROM shortlist WHERE day = ? ORDER BY rank", (day or _today(),))]
+def stored(conn, day=None, region=None):
+    """A day's list as stored: [{"job_id", "rank", "score", "why", "region"}] (empty if none was made)."""
+    _schema(conn)
+    rows = [dict(r) for r in conn.execute(
+        "SELECT job_id, rank, score, why, COALESCE(region, 'us') AS region FROM shortlist WHERE day = ? "
+        "ORDER BY COALESCE(region, 'us') DESC, rank", (day or _today(),))]
+    return [r for r in rows if region in (None, r["region"])]
 
 
-def today(conn, cfg):
-    """Today's list: the stored one, or a new one the first time it is asked for today."""
-    return stored(conn) or [{"job_id": e["job"]["id"], "rank": i, "score": e["score"], "why": "; ".join(e["why"])}
-                            for i, e in enumerate(refresh(conn, cfg), 1)]
+def today(conn, cfg, region=None):
+    """Today's list for a region (or both): the stored one, or new ones the first time today."""
+    if not stored(conn):
+        refresh(conn, cfg)
+    return stored(conn, region=region)
 
 
 def days(conn, limit=14):
     """Days that have a stored list, newest first."""
-    conn.execute(SCHEMA)
+    _schema(conn)
     return [r["day"] for r in conn.execute("SELECT DISTINCT day FROM shortlist ORDER BY day DESC LIMIT ?", (limit,))]

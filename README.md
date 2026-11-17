@@ -31,7 +31,8 @@ By default, Job Copilot is tuned for **international students who will need visa
 
 - Every shortlisted posting is checked for sponsorship language. A posting that rules it out ("must be authorized to work without sponsorship", US citizens only, security clearance) is quoted and **skipped**, so no resume is written for it.
 - Employers with a history of H-1B sponsorship are favored when the posting says nothing either way.
-- The search is limited to US-based and remote-US roles.
+- It searches **early-career roles only**: internships, new grad, junior and "I/II" titles, and any posting whose minimum experience is 4 years or less. Senior titles and postings asking for 5+ years are dropped.
+- It searches **worldwide**, split into two categories you pick between in the app: **United States** and **Rest of the world**, each with its own daily list. Postings not written in English are skipped. Employer H-1B history only counts for US jobs.
 
 If you don't need sponsorship, or want different behavior, change these:
 
@@ -40,7 +41,7 @@ If you don't need sponsorship, or want different behavior, change these:
 | Write documents even when a posting rules out sponsorship | `config.yaml` → `llm: skip_no_sponsorship` | set to `false` |
 | How much sponsorship affects the score | `agent.py` → `final_score()` | the multipliers: `0.3` (rules it out) and `0.9` (unknown). Set both to `1.0` to ignore sponsorship |
 | Known sponsoring employers | `sponsors.py` → `KNOWN_SPONSORS` | add or remove companies |
-| Location | `config.yaml` → `prefilter: us_only` | `false` to keep all countries |
+| Location | `config.yaml` → `prefilter: regions` | `[us]`, `[world]` or `[us, world]` |
 | Seniority, titles, years of experience | `config.yaml` → `prefilter:` | edit `title_include`, `title_exclude`, `max_years_required` |
 
 ---
@@ -312,8 +313,12 @@ data/                 your database, documents, and Excel sheet (git-ignored)
 
 ## Known limits
 
+- **Worldwide search uses the same 223 company boards**: it finds those companies' roles outside the US, not every employer abroad. Add non-US companies to `companies.yaml` (`python -m copilot companies` checks them).
+- **Sponsorship outside the US** is read only from what the posting says; there is no employer history for other countries.
+- **Early-career filtering reads titles and stated years.** A posting that states no years and has a plain title ("Software Engineer") is kept and left to the AI grade; the Level column shows "not stated" for those.
+
 - **A local model is slower and weaker than a hosted one.** Grading takes about 11 s per job on an 8 GB GPU, so a run grades your best 100 matches and leaves the rest for the next run. Its grades agree with Claude Opus at 0.74 (Spearman) on our 24-job benchmark; the hosted model it replaced scored 0.79.
-- **Documents are written on demand**, not for every match (`llm.max_tailor_per_run: 0`). Cover letters are off by default (`writing.cover_letter`).
+- **Documents are written on demand**, not for every match (`llm.max_tailor_per_run: 0`). Cover letters come from **your story** when it contains `[Role]` and `[Company]`: your words are kept, those are filled in, and one company-specific sentence is written per job from the posting and fact-checked (left out if flagged). That costs one short model call. Turn letters off with `writing.cover_letter: false`.
 
 - **The matching report knows about 150 technical keywords.** A posting that names fewer than four of them gets no alignment number. It counts words, not experience.
 - **Company intelligence is only as good as its sources.** Small companies often have no Wikipedia page, so the facts are the posting's own "about" section and the job board. The why-fit points and project ideas are AI drafts from a local model: read them before you use them.

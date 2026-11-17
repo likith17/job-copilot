@@ -145,13 +145,16 @@ def company_facts(conn, job, online=True, get=_get):
     return facts
 
 
-def best_existing(master, job):
-    """The resume project or role that names most of what the posting asks for:
-    {"name", "kind", "keywords"} or None."""
+def best_existing(master, job, extra=None):
+    """The project or role that names most of what the posting asks for:
+    {"name", "kind", "keywords"} or None. extra: {name: text} of your other projects
+    (data/inputs/projects.md), kind "project not on this resume"."""
     parts = ats.split_posting(job.get("description"))
     wanted = ats.keywords(parts["required"] + "\n" + parts["preferred"])
     best = None
-    for kind, items in (("project", master.get("projects") or []), ("role", master.get("experience") or [])):
+    others = [{"name": n, "bullets": [t]} for n, t in (extra or {}).items()]
+    for kind, items in (("project", master.get("projects") or []), ("role", master.get("experience") or []),
+                        ("project not on this resume", others)):
         for item in items:
             name = (item.get("name") or f"{item.get('title')}, {item.get('company')}").strip(" ,")
             text = name + " " + " ".join(item.get("bullets") or [])

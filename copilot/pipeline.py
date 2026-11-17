@@ -17,7 +17,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
-from copilot import library, db, export, fetch, inputs, latex, llm, runlock, scoring, shortlist
+from copilot import apply, library, db, export, fetch, inputs, latex, llm, runlock, scoring, shortlist
 from copilot.documents import render_cover_letter, render_resume, slug
 
 log = logging.getLogger(__name__)
@@ -94,6 +94,7 @@ def _run(cfg, *, fetch_jobs=True, use_llm=True, limit=None, say=print):
         stats["todays_list"] = len(todays)
         say(f"Today's list: {len(todays)} jobs" + (f", best: {todays[0]['job']['company']} "
                                                    f"({todays[0]['job']['title']})." if todays else "."))
+        lap("today's list")
         stats["timing_s"] = timing
         stats["llm"] = {**llm.STATS, "seconds": round(llm.STATS["seconds"])}
         db.prune_closed(conn)
@@ -172,7 +173,7 @@ def _fetch(cfg, conn, stats, say):
     stats["fetched"], stats["boards_failed"] = len(jobs), failures
     if failures:
         say(f"  {len(failures)} boards failed: {', '.join(sorted(failures))}")
-    stats["new"] = sum(db.upsert_seen(conn, job) for job in jobs)
+    stats["new"] = db.upsert_many(conn, jobs)
     stats["closed"] = db.mark_closed(conn, ok, {j["id"] for j in jobs})
     conn.commit()
     say(f"  {stats['fetched']:,} postings: {stats['new']:,} new, {stats['closed']} closed since last run.")
@@ -191,7 +192,8 @@ def _sponsorship_for_list(cfg, conn, picked, say, rounds=3):
         say(f"Checking sponsorship for {len(todo)} job(s) on today's list...")
         for job in todo:
             jd = scoring.sponsorship_cached(cfg, job["description"], settings)
-            f = scoring.final(lib.text(lib.for_job(job)), job["description"], job["company"], jd)
+            f = scoring.final(lib.text(lib.for_job(job)), job["description"], job["company"], jd,
+                              job.get("region") or "us")
             db.update(conn, job["id"], sponsorship_status=jd["status"], sponsorship_evidence=jd["evidence"],
                       sponsorship_verified=int(bool(jd["verified"])), sponsorship_basis=f["basis"],
                       multiplier=f["multiplier"], final_score=f["final"])
@@ -200,7 +202,40 @@ def _sponsorship_for_list(cfg, conn, picked, say, rounds=3):
     return picked
 
 
+KEEP = ("Applied", "Interviewing", "Offer", "Rejected")
+
+
+def _recheck(cfg, conn, say):
+    """Your filters changed: apply them to the live postings already stored. Jobs the
+    new rules let in go back through matching; jobs they now rule out leave your
+    lists, unless you have applied or documents exist."""
+    let_in = ruled_out = 0
+    rows = conn.execute("""SELECT id, title, location, country, description, posted_at, stage, status, resume_path
+                           FROM jobs WHERE is_active = 1 AND source != 'manual' AND stage != 'new'""").fetchall()
+    for r in rows:
+        job = dict(r)
+        reason = fetch.prefilter_reason(job, cfg.prefilter)
+        if r["stage"] == "filtered_out":
+            if not reason:
+                db.update(conn, r["id"], stage="new", filter_reason=None)
+                let_in += 1
+            else:
+                conn.execute("UPDATE jobs SET filter_reason = ? WHERE id = ?", (reason, r["id"]))
+        elif reason and r["status"] not in KEEP and not r["resume_path"]:
+            db.update(conn, r["id"], stage="filtered_out", filter_reason=reason)
+            ruled_out += 1
+        else:
+            db.update(conn, r["id"], region=fetch.region(job), level=fetch.level(job))
+    conn.commit()
+    say(f"Filters changed: {let_in:,} stored postings now qualify, {ruled_out:,} no longer do.")
+
+
 def _prefilter(cfg, conn, stats, say):
+    rules = db.text_key(json.dumps(cfg.prefilter, sort_keys=True, default=str))
+    if db.get_meta(conn, "prefilter_rules") != rules:
+        _recheck(cfg, conn, say)
+        db.set_meta(conn, "prefilter_rules", rules)
+        conn.commit()
     fresh = db.jobs_in_stage(conn, "new")
     for job in fresh:
         # A job you added yourself is never filtered out by the automatic rules.
@@ -209,7 +244,8 @@ def _prefilter(cfg, conn, stats, say):
             db.update(conn, job["id"], stage="filtered_out", filter_reason=reason)
             stats["filtered_out"] += 1
         else:
-            db.update(conn, job["id"], stage="pending", filter_reason=None)
+            db.update(conn, job["id"], stage="pending", filter_reason=None,
+                      region=fetch.region(job), level=fetch.level(job))
     conn.commit()
     if fresh:
         say(f"Prefilter: {len(fresh) - stats['filtered_out']:,} of {len(fresh):,} look relevant.")
@@ -241,6 +277,19 @@ def _score(cfg, conn, resume_text, stats, say):
             conn.commit()
             say(f"  {i}/{len(pending)}")
     conn.commit()
+
+
+def _balanced(jobs, cap):
+    """Up to `cap` jobs, taken in turn from each region (US, rest of world), each in
+    its own priority order: one region never crowds out the other."""
+    queues = {}
+    for job in jobs:
+        queues.setdefault(job.get("region") or "us", []).append(job)
+    out, i = [], 0
+    while len(out) < cap and any(i < len(q) for q in queues.values()):
+        out += [q[i] for q in queues.values() if i < len(q)][:cap - len(out)]
+        i += 1
+    return out
 
 
 def _grade(cfg, conn, resume_text, stats, say):
@@ -276,7 +325,9 @@ def _grade(cfg, conn, resume_text, stats, say):
     if len(missing) < len(candidates):
         conn.commit()
         say(f"{len(candidates) - len(missing)} grades reused from earlier runs.")
-    todo = missing[:cfg.llm.get("max_grade_per_run", 300)]
+    todo = _balanced(missing, cfg.llm.get("max_grade_per_run", 300))
+    # The same resume back to back: the model keeps it in its prompt cache.
+    todo.sort(key=lambda j: str(lib.for_job(j)))
     if not todo:
         return
     say(f"AI fit grade for {len(todo)} of {len(missing)} candidates ({settings['provider']}: {settings['model']})...")
@@ -328,6 +379,8 @@ def _make_applications(cfg, conn, resume_text, jobs, cap, *, force, stats, say, 
         "say": say,
         "base_pages": {},
         "base_letter": inputs.read_text(cfg.cover_letter) if cfg.cover_letter else "",
+        # Your story with [Role]/[Company] placeholders is your cover letter template.
+        "letter_template": apply.read_story(cfg),
         "force": force,
         "instruction": instruction,
         # Checked once per run: the writer model, or its fallback if it can't serve.
@@ -416,7 +469,7 @@ def _application(ctx, job):
 
         def sponsorship_result():
             jd = sponsor.result()
-            f = scoring.final(resume_text, job["description"], job["company"], jd)
+            f = scoring.final(resume_text, job["description"], job["company"], jd, job.get("region") or "us")
             updates.update(sponsorship_status=jd["status"], sponsorship_evidence=jd["evidence"],
                            sponsorship_verified=int(bool(jd["verified"])), sponsorship_basis=f["basis"],
                            multiplier=f["multiplier"], final_score=f["final"])
@@ -432,6 +485,7 @@ def _application(ctx, job):
         resume, letter, changes, flags, report = tailor.tailor(
             master, job, job["matched_skills"], job["missing_skills"],
                 ctx["writer"], base_letter=ctx["base_letter"], instruction=ctx["instruction"],
+                letter_template=ctx["letter_template"],
             writing=ctx["writing"], examples=ctx["examples"])
 
         if ctx["force"]:

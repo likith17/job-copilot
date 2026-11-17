@@ -5,6 +5,7 @@ job actually for me": it ranks chip verification near ML engineering because
 the vocabulary overlaps. A short LLM read of each surviving posting fixes the
 ordering for a few cents, and only new postings are ever graded.
 """
+import re
 from typing import Literal
 
 from pydantic import BaseModel
@@ -82,10 +83,39 @@ def rubric_fit(r):
     return max(0, score - 20 * bool(r.dealbreakers))
 
 
+# Sections that say nothing about fit: dropped before grading (fewer tokens, faster).
+_NOISE = re.compile(r"^\W*(?:benefits|perks|what we offer|our offer|compensation|salary|pay (?:range|transparency)|"
+                    r"base pay|total rewards|equal (?:employment )?opportunit|eeo\b|accommodation|privacy|"
+                    r"about (?!the (?:role|team|job|position|opportunity)|you\b|this role)|who we are|our (?:values|"
+                    r"mission|culture|story)|why join|why work|life at|how to apply|disclaimer|"
+                    r"(?:hybrid|remote|office|location) (?:policy|work)|u\.?s\.? (?:pay|salary)|"
+                    r"(?:the )?interview process|recruit(?:ment|ing) process|notice)", re.I)
+_DROP_LINE = re.compile(r"equal opportunity employer|without regard to (?:race|sex)|reasonable accommodation|"
+                        r"e-verify|privacy (?:notice|policy)|pay transparency", re.I)
+MAX_POSTING = 4500
+
+
+def trim_posting(text, limit=MAX_POSTING):
+    """The posting without benefits, legal notices and company boilerplate."""
+    out, skipping = [], False
+    for line in (text or "").split("\n"):
+        s = line.strip()
+        heading = bool(s) and len(s.split()) <= 8 and not s.endswith(".") and s[0] not in "-•*–·"
+        if heading:
+            skipping = bool(_NOISE.match(s))
+        if skipping or _DROP_LINE.search(s):
+            continue
+        out.append(line)
+    trimmed = re.sub(r"\n\s*\n\s*\n+", "\n\n", "\n".join(out)).strip()
+    # Nothing left means the layout fooled us: grade the whole posting instead.
+    return (trimmed if len(trimmed) > 40 else (text or ""))[:limit]
+
+
 def grade(resume_text, job, settings):
     """settings: llm.task_settings(cfg, "grade"). `method: rubric` (for small models)
     asks concrete questions and scores them in code; the default asks for the grade."""
-    user = f"COMPANY: {job['company']}\nROLE: {job['title']}\nLOCATION: {job['location']}\n\n{job['description']}"
+    user = (f"COMPANY: {job['company']}\nROLE: {job['title']}\nLOCATION: {job['location']}\n\n"
+            f"{trim_posting(job['description'])}")
     if settings.get("method") == "rubric":
         system = [{"type": "text", "text": RUBRIC_SYSTEM + resume_text}]
         r, usage = llm.parse(settings, system, user[:9000], Rubric, max_tokens=3000)

@@ -158,7 +158,7 @@ def report(resume_text, job, other_resumes=None, years=None):
         kind = "required" if term in req["missing"] else "preferred"
         if where:
             suggestions.append({"keyword": term, "kind": kind, "on_file": True,
-                                "advice": f"Your {where[0]} resume already mentions it: bring that line into this one."})
+                                "advice": f"Your {where[0]} already mentions it: bring that line into this resume."})
         else:
             suggestions.append({"keyword": term, "kind": kind, "on_file": False,
                                 "advice": "None of your resumes mention it. Add it only if you have really used it; "

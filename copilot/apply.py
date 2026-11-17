@@ -196,7 +196,8 @@ def answer_question(cfg, conn, question, job=None, kind="text", options=None, se
     lib = library.Resolver(cfg, conn)            # the resume this job was tailored from
     master = lib.master(lib.for_job(job) if job else lib.cfg.resume, log=lambda *_: None).model_dump()
     resume = tailor.resume_to_text(master)
-    story = read_story(cfg)
+    from copilot import letter as letters
+    story = letters.for_answers(read_story(cfg), job)
     letter = inputs.read_text(cfg.cover_letter) if cfg.cover_letter else ""
     facts = {k: profile.get(k) for k in ("location", "current_company", "current_title", "years_experience",
                                           "work_authorization", "start_date", "willing_to_relocate",

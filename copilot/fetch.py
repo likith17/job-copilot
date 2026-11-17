@@ -39,8 +39,8 @@ def _normalize(job, company):
     }
 
 
-def fetch_all(companies, max_workers=8):
-    """Fetch every board concurrently.
+def fetch_all(companies, max_workers=24):
+    """Fetch every board concurrently (network-bound, so many threads at once).
 
     Returns (jobs, ok_companies, failures) so the caller can tell a board that
     has no openings apart from a board that failed to load.
@@ -117,6 +117,54 @@ def is_us(job):
     return not NON_US.search(loc)
 
 
+# "Software Engineer 3", "Engineer IV", "SDE L5": levels above early career.
+SENIOR_LEVEL = re.compile(r"\b(?:engineer|developer|scientist|sde|swe|analyst)\s*(?:[3-9]|iii|iv|v|vi)\b|\bl[5-9]\b")
+
+
+def region(job):
+    """"us" or "world": the two categories you choose between."""
+    return "us" if is_us(job) else "world"
+
+
+# Titles that say the role is for early-career people, in the order checked.
+LEVELS = [
+    ("intern", re.compile(r"\bintern(?:ship)?s?\b|\bco-?op\b|apprentice|working student|werkstudent|"
+                          r"\bstudent (?:worker|researcher|engineer)", re.I)),
+    ("new grad", re.compile(r"new[- ]grad|\bgraduate\b|\bgrad\b|university|campus|early[- ]career|entry[- ]level|"
+                            r"\bjunior\b|\bjr\.?(?!\w)|\bassociate\b|residen(?:cy|t)\b|"
+                            r"\b(?:engineer|developer|scientist|analyst)\s*(?:i|1)\b(?!\s*i)|level (?:i|1)\b", re.I)),
+]
+
+
+def level(job):
+    """intern | new grad | "N+ yrs" (what the posting asks) | "not stated"."""
+    for name, rx in LEVELS:
+        if rx.search(job.get("title") or ""):
+            return name
+    years = min_years_required(job.get("description"))
+    return f"{years}+ yrs" if years else "not stated"
+
+
+ENGLISH = re.compile(r"\b(?:the|and|to|of|you|with|for|our|we|in|is|are|will|your)\b", re.I)
+WORD = re.compile(r"\w+")
+
+
+def looks_english(text):
+    """A posting in German, French, Japanese... is skipped: the matcher and the
+    grader read English, and you apply in English."""
+    sample = (text or "")[:3000]
+    words = len(WORD.findall(sample))
+    return words < 60 or len(ENGLISH.findall(sample)) / words > 0.08
+
+
+NUMBER_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
+                "nine": 9, "ten": 10, "twelve": 12, "fifteen": 15}
+NUMBER_WORD = re.compile(r"\b(" + "|".join(NUMBER_WORDS) + r")\b(?=\s*(?:\(\d+\)\s*)?\+?\s*(?:or more\s+)?years?)", re.I)
+
+
+OR_MORE = re.compile(r"(\d{1,2})\s+or more(?=\s+years?)", re.I)
+
+
 YEARS = re.compile(
     r"(\d{1,2})\s*(?:\+|plus)?\s*(?:-|–|to)?\s*(?:\d{1,2}\s*)?\+?\s*years?(?:'|’)?\s+(?:of\s+)?"
     r"(?:\w+\s+){0,4}?(?:experience|exp\b)",
@@ -130,7 +178,9 @@ def min_years_required(text):
     Taking the minimum is deliberate: "3+ years required, 5+ preferred" should
     count as 3, not 5.
     """
-    nums = [int(m.group(1)) for m in YEARS.finditer(text or "")]
+    text = NUMBER_WORD.sub(lambda m: str(NUMBER_WORDS[m.group(1).lower()]), text or "")
+    text = OR_MORE.sub(lambda m: m.group(1) + "+", text)
+    nums = [int(m.group(1)) for m in YEARS.finditer(text)]
     nums = [n for n in nums if 0 < n < 30]
     return min(nums) if nums else None
 
@@ -158,7 +208,10 @@ def prefilter_reason(job, rules):
         if m:
             return f"title: excluded term '{m.group(0)}'"
 
-    if rules.get("us_only", True) and not is_us(job):
+    if SENIOR_LEVEL.search(title):
+        return "title: senior level number"
+    regions = rules.get("regions") or (["us"] if rules.get("us_only", True) else ["us", "world"])
+    if region(job) not in regions:
         return f"location: {job['location'][:60]}"
 
     max_age = rules.get("max_age_days")
@@ -174,4 +227,6 @@ def prefilter_reason(job, rules):
 
     if len(job["description"]) < 200:
         return "description: too short to score"
+    if not looks_english(job["description"]):
+        return "language: posting is not in English"
     return None

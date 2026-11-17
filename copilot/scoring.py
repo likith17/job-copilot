@@ -76,6 +76,11 @@ def sponsorship_cached(cfg, job_description, settings):
         conn.close()
 
 
-def final(resume_text, job_description, company, jd_result):
-    """Sponsorship-weighted score. jd_result is passed in so the LLM runs once per job."""
-    return _agent().final_score(resume_text, job_description, company, jd_result=jd_result)
+def final(resume_text, job_description, company, jd_result, region="us"):
+    """Sponsorship-weighted score. jd_result is passed in so the LLM runs once per job.
+    The employer list is US H-1B history: it says nothing about visas elsewhere."""
+    f = _agent().final_score(resume_text, job_description, company, jd_result=jd_result)
+    if region != "us" and f["basis"] == "employer has sponsored before":
+        base = f["final"] / f["multiplier"] if f["multiplier"] else 0
+        f.update(basis="unknown", multiplier=0.9, final=base * 0.9)
+    return f

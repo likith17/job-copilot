@@ -70,6 +70,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     revision              INTEGER DEFAULT 0,  -- bumps on every regenerate / revise / edit
     tailor_report         TEXT,               -- JSON: requirements, bullet before/after, keyword coverage
 
+    region                TEXT,               -- us | world (copilot/fetch.py)
+    level                 TEXT,               -- intern | new grad | N+ yrs | not stated
     role_family           TEXT,               -- software | backend | ai | ... (copilot/library.py)
     resume_file           TEXT,               -- the master resume this job was scored and tailored with
     doc_status            TEXT,               -- generating | ready | failed (documents for this job)
@@ -284,6 +286,37 @@ def upsert_seen(conn, job):
          job["posted_at"], ts, ts, ts),
     )
     return True
+
+
+def upsert_many(conn, jobs):
+    """upsert_seen for a whole crawl, writing only what changed. Returns how many are new.
+
+    Most postings are known and filtered out: they need no write at all. A known,
+    live posting is rewritten only when its listing text changed."""
+    ts = now()
+    known = {r[0]: (r[1], r[2]) for r in conn.execute("SELECT id, stage, is_active FROM jobs")}
+    new, reopened, refresh = [], [], []
+    for job in jobs:
+        state = known.get(job["id"])
+        fields = (job["title"], job["location"], job["url"], job["apply_url"], job["description"])
+        if state is None:
+            new.append((job["id"], job["source"], job["company"], job["title"], job["location"], job.get("country"),
+                        job["department"], job["url"], job["apply_url"], job["description"], job["posted_at"],
+                        ts, ts, ts))
+        elif not state[1]:
+            reopened.append((ts, *fields, job["id"]))
+        elif state[0] != "filtered_out":
+            refresh.append((ts, *fields, job["id"], *fields))
+    conn.executemany(
+        """INSERT INTO jobs (id, source, company, title, location, country, department, url, apply_url,
+                             description, posted_at, first_seen, last_seen, is_active, stage, status, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'new', 'New', ?)""", new)
+    conn.executemany("""UPDATE jobs SET last_seen = ?, is_active = 1, title = ?, location = ?, url = ?,
+                        apply_url = ?, description = ? WHERE id = ?""", reopened)
+    conn.executemany("""UPDATE jobs SET last_seen = ?, title = ?, location = ?, url = ?, apply_url = ?,
+                        description = ? WHERE id = ? AND (title IS NOT ? OR location IS NOT ? OR url IS NOT ?
+                        OR apply_url IS NOT ? OR description IS NOT ?)""", refresh)
+    return len(new)
 
 
 def update(conn, job_id, **fields):

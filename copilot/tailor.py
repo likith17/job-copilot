@@ -1025,7 +1025,7 @@ def examples_block(examples):
 
 
 def tailor(master: MasterResume, job, matched, missing, settings, base_letter="", instruction="",
-           writing=None, examples=None):
+           writing=None, examples=None, letter_template=""):
     """Return (tailored_resume, cover_letter, changes, flags, report).
 
     base_letter is the candidate's own uploaded cover letter: a voice reference
@@ -1067,11 +1067,19 @@ def tailor(master: MasterResume, job, matched, missing, settings, base_letter=""
     # The cover letter is optional (writing.cover_letter): it costs about as many model
     # calls as the resume, and most applications don't need one.
     want_letter = writing.get("cover_letter", True)
-    letter_future = pool.submit(
+    from copilot import letter as letters
+    use_template = want_letter and letters.is_template(letter_template)
+    if use_template:     # your own letter: only the role, company and one sentence change
+        trusted = "\n".join(filter(None, [trusted, letter_template]))
+        letter_future = pool.submit(letters.from_template, letter_template, job, master_d, settings,
+                                    {**settings, "effort": "low"}, trusted)
+    else:
+        letter_future = pool.submit(
         llm.parse, settings, system,
         base_user + "\n\nWrite ONLY the cover letter now, following the cover letter instructions "
                     "and every rule above. The resume edits are handled separately.",
         LetterFix, 16000) if want_letter else None
+    letter_notes = []
     # Audits and bullet repairs are narrow checks: they don't need deep thinking.
     check = {**settings, "effort": "low"}
 
@@ -1119,13 +1127,16 @@ def tailor(master: MasterResume, job, matched, missing, settings, base_letter=""
             user = (base_user + "\n\nYOUR PREVIOUS PLAN HAD THESE PROBLEMS; FIX THEM:\n- " + "\n- ".join(feedback)
                     + "\nKeep every metric verbatim and keep each edited bullet about the same length.")
 
-        letter = plain(letter_future.result()[0].cover_letter.strip()) if want_letter else ""
+        if use_template:
+            letter, letter_notes = letter_future.result()
+        else:
+            letter = plain(letter_future.result()[0].cover_letter.strip()) if want_letter else ""
     finally:
         pool.shutdown(wait=False)
 
     # The letter: checks in code plus a claims audit; one focused rewrite if needed.
     letter_flags = (letter_problems(master_d, letter, job["description"], trusted, writing)
-                    + audit_claims(master_d, "", letter, check, trusted)) if want_letter else []
+                    + audit_claims(master_d, "", letter, check, trusted)) if want_letter and not use_template else []
     if letter_flags:
         letter, letter_flags = repair_letter(master_d, letter, letter_flags, job["description"],
                                              settings, trusted, writing)
@@ -1133,6 +1144,7 @@ def tailor(master: MasterResume, job, matched, missing, settings, base_letter=""
         letter, letter_flags = scrub_letter(master_d, letter, letter_flags, job["description"], check, trusted, writing)
     _, resume, changes, flags, report = best
     report["letter_flags"] = letter_flags
+    report["letter_notes"] = letter_notes
     flags = flags + letter_flags
     best = (None, resume, letter, changes, flags, report)
 
