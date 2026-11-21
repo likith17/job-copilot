@@ -135,5 +135,5 @@ def read_text(path):
         except latex.LaTeXError:
             body = tex.split(r"\begin{document}")[-1].split(r"\end{document}")[0]
             return latex.to_plain(body)                      # e.g. a cover letter
-    from resume_reader import read_resume
+    from copilot.matching.resume_reader import read_resume
     return read_resume(str(path))

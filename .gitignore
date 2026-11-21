@@ -4,8 +4,6 @@ __pycache__/
 .venv/
 # Personal data: uploaded resumes/cover letters, job DB, generated applications
 data/
-# Friend's original repo (nested .git); the vendored copy lives in jobmatcher/
-fetcher model/
 *.egg-info/
 .pytest_cache/
 

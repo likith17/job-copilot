@@ -4,11 +4,11 @@ from functools import lru_cache
 from dotenv import load_dotenv
 from anthropic import Anthropic
 from sentence_transformers import SentenceTransformer
-from database import save_job as db_save_job 
-from matcher import match_score
-from skills import SKILLS
-from jd_sponsorship import extract_sponsorship
-from sponsors import sponsorship_signal
+from .database import save_job as db_save_job 
+from .matcher import match_score
+from .skills import SKILLS
+from .jd_sponsorship import extract_sponsorship
+from .sponsors import sponsorship_signal
 import numpy as np
 
 load_dotenv()
@@ -227,7 +227,7 @@ def final_score(resume_text, job_description, company, jd_result=None):
     }
 
 if __name__ == "__main__":
-    from resume_reader import read_resume
+    from .resume_reader import read_resume
     resume = read_resume("resume.pdf")
     with open("job.txt", "r", encoding="utf-8") as jd_file:
         job = jd_file.read()

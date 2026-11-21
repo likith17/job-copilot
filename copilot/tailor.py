@@ -18,7 +18,7 @@ from pydantic import BaseModel
 
 from copilot import llm
 
-from skills import SKILLS
+from copilot.matching.skills import SKILLS
 
 # ---------------- schemas ----------------
 

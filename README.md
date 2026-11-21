@@ -39,8 +39,8 @@ If you don't need sponsorship, or want different behavior, change these:
 | What | Where | Change |
 |---|---|---|
 | Write documents even when a posting rules out sponsorship | `config.yaml` → `llm: skip_no_sponsorship` | set to `false` |
-| How much sponsorship affects the score | `agent.py` → `final_score()` | the multipliers: `0.3` (rules it out) and `0.9` (unknown). Set both to `1.0` to ignore sponsorship |
-| Known sponsoring employers | `sponsors.py` → `KNOWN_SPONSORS` | add or remove companies |
+| How much sponsorship affects the score | `copilot/matching/agent.py` → `final_score()` | the multipliers: `0.3` (rules it out) and `0.9` (unknown). Set both to `1.0` to ignore sponsorship |
+| Known sponsoring employers | `copilot/matching/sponsors.py` → `KNOWN_SPONSORS` | add or remove companies |
 | Location | `config.yaml` → `prefilter: regions` | `[us]`, `[world]` or `[us, world]` |
 | Seniority, titles, years of experience | `config.yaml` → `prefilter:` | edit `title_include`, `title_exclude`, `max_years_required` |
 
@@ -298,15 +298,23 @@ copilot/              the pipeline
   ats.py              matching report: required/preferred keyword coverage, gaps, suggestions
   intel.py            company facts with sources, why-fit / why-company, project ideas
   training.py         training data: teacher runs, filtering, SFT/preference sets
+  letter.py           cover letters from your story template
+  matching/           the original matcher the pipeline builds on: embedding + skills score
+                      (agent.py), sponsorship classifier, known sponsors, skills list, resume reading
 training/             fine-tuning scripts (QLoRA on Qwen3-8B)
 extension/            the Chrome extension (content.js fills forms; also used by the runner)
-jobmatcher/           job board crawlers (Greenhouse, Lever, Ashby)
-agent.py              the original single-job matcher and agent
+jobmatcher/           job board crawlers (Greenhouse, Lever, Ashby), vendored
+ollama/               the local model's build file (8K context)
 config.yaml           your preferences
 profile.example.yaml  template for profile.yaml, your application answers
 companies.yaml        the boards to crawl
-tests/                150+ tests
-data/                 your database, documents, and Excel sheet (git-ignored)
+start_app.cmd         double-click to open the app
+tests/                270 tests
+data/                 your database, resumes, documents and Excel sheet (git-ignored)
+  inputs/resume/      your default resume and the resume library (library_*.tex)
+  inputs/story.md     your story and cover letter template
+  inputs/projects.md  projects not on every resume
+  applications/       one folder of documents per job
 ```
 
 ---

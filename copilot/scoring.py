@@ -14,10 +14,10 @@ def _agent():
     import os
     os.environ.setdefault("HF_HUB_OFFLINE", "1")
     try:
-        import agent
+        from copilot.matching import agent
     except Exception:           # first run on this machine: the model has to be downloaded once
         os.environ.pop("HF_HUB_OFFLINE", None)
-        import agent
+        from copilot.matching import agent
     from copilot import embedcache
     agent.embed_cache = embedcache
     return agent
@@ -41,7 +41,7 @@ def sponsorship(job_description, settings):
     Same prompt and the same rule: a rejection quote that can't be found in the
     posting is not trusted (final_score treats it as not_mentioned).
     """
-    import jd_sponsorship as js
+    from copilot.matching import jd_sponsorship as js
     from copilot import llm
 
     try:
@@ -58,7 +58,7 @@ def sponsorship(job_description, settings):
 
 def sponsorship_cached(cfg, job_description, settings):
     """Sponsorship depends only on the posting, so it's asked once per posting text."""
-    import jd_sponsorship as js
+    from copilot.matching import jd_sponsorship as js
     from copilot import db
 
     key = f"sponsorship:{settings.get('model')}:{db.text_key(job_description)}"
