@@ -123,10 +123,14 @@ Every crawled job comes from Greenhouse, Lever or Ashby. Their forms are standar
 
 **2. The Chrome extension (you click Submit).**
 1. Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, and pick the `extension/` folder.
-2. Open the extension's options and paste the token shown in the app's sidebar (**Apply → Autofill extension setup**).
-3. Keep the app running (or run `python -m copilot serve`).
+2. Open the extension's settings and paste the token shown in the app's sidebar (**Apply → Autofill extension setup**), with the app running. It saves a copy of your profile, saved answers and resumes (as PDFs) in the extension, and refreshes that copy whenever the app is running.
 
-Open any application page. The extension:
+**It works with the app closed, on any site,** from that saved copy:
+- **Suggestions:** click into a field it recognizes (name, email, phone, links, address, school...) and a small menu offers your value, like Chrome's own autofill. Pick it with the mouse, or the arrow keys and Enter. Password fields are never touched.
+- **Fill the whole page:** the toolbar button, **Alt+Shift+F**, or right-click → *Fill this page with Job Copilot*. File uploads get the resume you pick in the toolbar popup (any version from your resume library).
+- On other sites it only uses your profile and answers you saved yourself: no AI drafts, nothing logged as an application. AI drafts and per-job tailored documents need the app running.
+
+On Greenhouse, Lever and Ashby application pages, with the app running, the extension:
 - fills every field it can from your profile;
 - attaches *that job's* tailored resume and cover letter;
 - answers custom questions from your **answer bank**, or with an AI draft for required questions (highlighted in amber for you to review);

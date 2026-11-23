@@ -2,10 +2,11 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Job Copilot Autofill</title>
+  <title>Job Copilot Autofill: settings</title>
   <style>
-    body { font: 14px/1.5 system-ui, sans-serif; width: 340px; padding: 12px; color: #202124; }
+    body { font: 14px/1.5 system-ui, sans-serif; max-width: 460px; padding: 16px; color: #202124; }
     label { display: block; margin: 10px 0 4px; font-weight: 600; }
+    label.c { font-weight: 400; }
     input[type=text], input[type=number] { width: 100%; box-sizing: border-box; padding: 6px; }
     button { margin-top: 12px; padding: 6px 14px; }
     .m { color: #5f6368; font-size: 12px; }
@@ -13,14 +14,17 @@
 </head>
 <body>
   <h3>Job Copilot Autofill</h3>
-  <p class="m">Run the app (or <code>python -m copilot serve</code>), then paste the token it shows.
-    The token is in <code>data/extension_token.txt</code>.</p>
+  <p class="m">The extension keeps its own copy of your profile, saved answers and resumes, so it fills pages
+    with the app closed. The copy refreshes whenever the app is running (and when you press Sync).
+    To connect: run the app (or <code>python -m copilot serve</code>) and paste the token from
+    <code>data/extension_token.txt</code>.</p>
   <label for="token">Token</label>
   <input id="token" type="text" autocomplete="off">
   <label for="port">Port</label>
   <input id="port" type="number" value="8765">
-  <label><input id="autofill" type="checkbox"> Fill forms as soon as they open</label>
-  <button id="save">Save and test</button>
+  <label class="c"><input id="suggest" type="checkbox"> Suggest my details when I click into a field (any site)</label>
+  <label class="c"><input id="autofill" type="checkbox"> Fill Greenhouse, Lever and Ashby applications as soon as they open</label>
+  <button id="save">Save and sync</button>
   <p id="status" class="m"></p>
   <script src="options.js"></script>
 </body>

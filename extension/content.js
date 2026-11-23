@@ -1,18 +1,23 @@
-// Job Copilot autofill: fills Greenhouse / Lever / Ashby application forms from
-// your profile, your answer bank and this job's tailored documents.
+// Job Copilot autofill: fills forms from your profile, your answer bank and, on job
+// applications, that job's tailored documents.
 //
 // It never clicks Submit. The same script runs in two places:
-//   - the Chrome extension (talks to the local API through background.js)
+//   - the Chrome extension (talks to the local API through background.js, which
+//     answers from its saved copy of your data when the app is closed)
 //   - the auto-apply runner (Playwright injects it and provides window.__copilotBridge)
 // Its result is published on <html data-copilot="..."> for the runner to read.
+//
+// On Greenhouse, Lever and Ashby it fills as soon as the form opens (a setting). On any
+// other site it only suggests values when you click into a field, and fills the whole
+// page when you ask (toolbar button, Alt+Shift+F, or right-click).
 (() => {
   if (window.__copilotLoaded) return;
   window.__copilotLoaded = true;
 
   const host = location.hostname;
   const ATS = /greenhouse\.io$/.test(host) ? "greenhouse" : /lever\.co$/.test(host) ? "lever"
-    : /ashbyhq\.com$/.test(host) ? "ashby" : (window.__copilotBridge ? "other" : null);
-  if (!ATS) return;
+    : /ashbyhq\.com$/.test(host) ? "ashby" : (window.__copilotBridge ? "other" : "any");
+  const ANY = ATS === "any";      // not a job board: profile and saved answers only, never AI drafts
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const clean = (s) => (s || "").replace(/[*✱]/g, "").replace(/\(required\)/i, "").replace(/\s+/g, " ").trim();
@@ -318,8 +323,8 @@
     return false;
   }
 
-  async function attach(field, job, kind) {
-    const file = await api(`/api/file?job=${encodeURIComponent(job.id)}&kind=${kind}`, "GET", null, true);
+  async function attach(field, job, kind, saved = null) {
+    const file = saved || await api(`/api/file?job=${encodeURIComponent(job.id)}&kind=${kind}`, "GET", null, true);
     const bytes = Uint8Array.from(atob(file.base64), (c) => c.charCodeAt(0));
     const dt = new DataTransfer();
     dt.items.add(new File([bytes], file.name, { type: file.type }));
@@ -353,13 +358,18 @@
     let profile;
     try {
       profile = await api("/api/profile");
-      state.job = (await api(`/api/job?url=${encodeURIComponent(location.href)}`)).job;
+      state.offline = profile._offline || null;       // the app is closed: this is the saved copy
+      state.job = ANY ? null : (await api(`/api/job?url=${encodeURIComponent(location.href)}`)).job;
     } catch (e) {
-      state.errors.push(`Copilot API not reachable: ${e.message}. Start the app or "python -m copilot serve".`);
+      state.errors.push(`No data to fill with: ${e.message}.`);
       state.done = true;
       return publish();
     }
     const fields = readForm();
+    if (ANY && !fields.length) {         // nothing to fill in this frame (an ad, a widget)
+      if (window === window.top) toast("Job Copilot: no form fields on this page.");
+      return;
+    }
     const later = [], attached = new Set();
     for (const f of fields) {
       try {
@@ -372,6 +382,13 @@
           if (!kind || attached.has(kind)) continue;
           attached.add(kind);
           if (!state.job || !state.job.documents[kind]) {
+            // No document written for this job (or not a job page): your chosen saved resume.
+            const saved = kind === "resume" ? await bg({ type: "vault-file" }) : null;
+            if (saved && !saved.error) {
+              const name = await attach(f, null, kind, saved);
+              state.filled.push({ label: f.label, value: `${name} (${saved.label})`, source: "saved resume", kind });
+              continue;
+            }
             if (f.required || kind === "resume") { state.needs.push(f.label); mark(f, "#d93025", "attach this yourself"); }
             continue;
           }
@@ -401,8 +418,11 @@
     await Promise.all(later.map(async (f) => {
       try {
         const options = ["text", "textarea"].includes(f.kind) ? null : f.options || [];
-        const a = await api("/api/answer", "POST", { question: f.label, job_id: state.job?.id, kind: f.kind, options,
-          draft: f.required && !options, required: f.required });
+        // Other sites: only answers you saved yourself (no AI drafts, nothing sent to the app's inbox).
+        const a = ANY ? (await bg({ type: "bank", question: f.label }) || { answer: "", note: "no saved answer" })
+          : await api("/api/answer", "POST", { question: f.label, job_id: state.job?.id, kind: f.kind, options,
+                                                draft: f.required && !options, required: f.required });
+        if (ANY && a.answer) a.source = "bank";
         const ok = a.answer ? await fill(f, a.answer) : false;
         if (ok === "manual") {
           state.combos.push({ key: f.els[0].dataset.copilotId, label: f.label, value: a.answer, required: f.required, search: false });
@@ -503,7 +523,9 @@
       <div class="p">
         <button class="x" id="close">×</button>
         <h3>Job Copilot</h3>
-        <div class="m">${j ? `${esc(j.company)}: ${esc(j.title)}${j.fit ? ` · fit ${j.fit}` : ""}` : "Not in your job DB: profile fields only."}</div>
+        <div class="m">${j ? `${esc(j.company)}: ${esc(j.title)}${j.fit ? ` · fit ${j.fit}` : ""}`
+          : ANY ? "From your profile and saved answers." : "Not in your job DB: profile fields only."}</div>
+        ${state.offline ? `<div class="m">App closed: using your saved copy from ${esc(new Date(state.offline).toLocaleDateString())}.</div>` : ""}
         ${j && j.flags && j.flags.length ? `<div class="m" style="color:#b06000">Documents have ${j.flags.length} review flag(s) in the app.</div>` : ""}
         ${state.submitted ? `<p style="color:#188038"><b>Submitted and marked Applied.</b></p>` : ""}
         ${state.done ? `<p>Filled <b>${state.filled.length}</b> fields. Review, then submit yourself.</p>` : "<p>Filling...</p>"}
@@ -513,17 +535,136 @@
         ${state.needs.length ? `<b>Needs you (${state.needs.length})</b><ul>${list(state.needs, "#d93025")}</ul>` : ""}
         ${state.captcha ? `<p class="m">This form has a CAPTCHA: solve it yourself.</p>` : ""}
         ${state.errors.length ? `<ul>${list(state.errors, "#5f6368")}</ul>` : ""}
-        <button id="fill">Fill again</button><button class="s" id="applied">Mark applied</button>
+        <button id="fill">Fill again</button>${ANY ? "" : `<button class="s" id="applied">Mark applied</button>`}
       </div>`;
     shadow.getElementById("fill").onclick = () => run();
-    shadow.getElementById("close").onclick = () => shadow.host.remove();
-    shadow.getElementById("applied").onclick = () => reportSubmitted({ job_id: state.job?.id, url: location.href, ats: ATS,
+    shadow.getElementById("close").onclick = () => { shadow.host.remove(); shadow = null; };
+    if (!ANY) shadow.getElementById("applied").onclick = () => reportSubmitted({ job_id: state.job?.id, url: location.href, ats: ATS,
       filled: state.filled.concat(state.drafts), unfilled: state.needs, answers: answersToSave(), note: "marked by hand" });
   }
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
+  function toast(text) {
+    const t = document.createElement("div");
+    t.textContent = text;
+    t.style.cssText = "position:fixed;right:16px;bottom:16px;z-index:2147483647;background:#202124;color:#fff;"
+      + "font:13px system-ui,sans-serif;padding:8px 12px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.25)";
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 3000);
+  }
+
+  // ---------------- suggestions, like the browser's own autofill ----------------
+  // Click into a field: if your profile or saved answers know what goes there, a small
+  // menu offers it. Nothing is filled until you pick it.
+  let suggestBox = null, suggestFor = null, suggestItems = [], active = -1, savedProfile = null;
+
+  async function suggestionsFor(el) {
+    if (el.readOnly || el.disabled || ["password", "hidden", "search", "file", "checkbox", "radio", "submit",
+      "button", "number", "date", "color", "range"].includes(el.type) || el.closest("#copilot-panel")) return [];
+    if (el.value && el.value.trim()) return [];             // only offer for empty fields, never overwrite
+    if (!savedProfile) savedProfile = await bg({ type: "vault-profile" });
+    if (!savedProfile || savedProfile.error) return [];
+    const label = labelFor(el);
+    if (!label) return [];
+    const kind = el.tagName === "TEXTAREA" ? "textarea" : "text";
+    const field = { label, kind, els: [el], options: [] };
+    const items = [];
+    const value = fromProfile(field, savedProfile, null);
+    if (value !== undefined) items.push({ value, note: label });
+    if (!items.length && (kind === "textarea" || isQuestion(field))) {
+      const a = await bg({ type: "bank", question: label });
+      if (a && a.answer && a.answer.trim()) items.push({ value: a.answer, note: "your saved answer" });
+    }
+    return items;
+  }
+
+  function hideSuggest() {
+    if (suggestBox) suggestBox.remove();
+    suggestBox = null; suggestFor = null; suggestItems = []; active = -1;
+  }
+
+  function choose(i) {
+    const el = suggestFor;
+    const item = suggestItems[i];
+    hideSuggest();
+    if (!el) return;
+    if (item.all) { run(); return; }
+    setNative(el, item.value);
+    el.dispatchEvent(new Event("blur", { bubbles: true }));
+    el.focus();
+  }
+
+  function renderSuggest() {
+    const root = suggestBox.shadowRoot;
+    root.innerHTML = `<style>
+        .b{font:13px/1.35 system-ui,sans-serif;background:#fff;color:#202124;border:1px solid #dadce0;border-radius:8px;
+           box-shadow:0 4px 14px rgba(0,0,0,.18);min-width:220px;max-width:360px;overflow:hidden}
+        .i{padding:7px 10px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .i.on,.i:hover{background:#e8f0fe} .n{color:#5f6368;font-size:11px} .f{border-top:1px solid #eee;color:#1a73e8}
+      </style><div class="b">${suggestItems.map((it, i) => `<div class="i${it.all ? " f" : ""}${i === active ? " on" : ""}" data-i="${i}">
+        ${it.all ? "Fill all fields on this page" : `${esc(it.value.length > 70 ? it.value.slice(0, 70) + "…" : it.value)}
+        <div class="n">Job Copilot · ${esc(it.note)}</div>`}</div>`).join("")}</div>`;
+    root.querySelectorAll(".i").forEach((d) => {
+      d.addEventListener("mousedown", (e) => { e.preventDefault(); choose(Number(d.dataset.i)); });
+    });
+  }
+
+  async function showSuggest(el) {
+    const items = await suggestionsFor(el);
+    if (document.activeElement !== el) return;
+    hideSuggest();
+    if (!items.length) return;
+    suggestFor = el;
+    suggestItems = [...items, { all: true }];
+    const r = el.getBoundingClientRect();
+    suggestBox = document.createElement("div");
+    suggestBox.id = "copilot-panel";        // ignored by readForm, like the panel
+    suggestBox.style.cssText = `position:fixed;left:${Math.max(4, r.left)}px;top:${r.bottom + 4}px;z-index:2147483647`;
+    suggestBox.attachShadow({ mode: "open" });
+    document.documentElement.appendChild(suggestBox);
+    renderSuggest();
+  }
+
+  function setupSuggest() {
+    document.addEventListener("focusin", (e) => {
+      const el = e.target;
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) showSuggest(el).catch(() => {});
+    }, true);
+    document.addEventListener("focusout", () => setTimeout(() => {
+      if (suggestFor && document.activeElement !== suggestFor) hideSuggest();
+    }, 150), true);
+    document.addEventListener("input", (e) => { if (e.target === suggestFor && e.target.value) hideSuggest(); }, true);
+    window.addEventListener("scroll", () => hideSuggest(), true);
+    document.addEventListener("keydown", (e) => {
+      if (!suggestBox) return;
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        active = (active + (e.key === "ArrowDown" ? 1 : suggestItems.length - 1)) % suggestItems.length;
+        renderSuggest();
+        e.preventDefault();
+      } else if (e.key === "Enter" && active >= 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        choose(active);
+      } else if (e.key === "Escape") {
+        hideSuggest();
+      }
+    }, true);
+  }
+
+  // The toolbar button, Alt+Shift+F and the right-click menu ask the page to fill.
+  if (!window.__copilotBridge) {
+    chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+      if (msg.type === "run") { run(); reply({ ok: true }); }
+    });
+  }
+
   // ---------------- start ----------------
   async function start() {
+    if (!window.__copilotBridge) {
+      const settings = (await bg({ type: "settings" })) || {};
+      if (settings.suggest !== false) setupSuggest();
+    }
+    if (ANY) return;               // other sites: only when you ask
     await checkPending();
     if (state.submitted) return;
     for (let i = 0; i < 30; i++) {         // forms render late on single-page sites

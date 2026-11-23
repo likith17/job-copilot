@@ -7,6 +7,7 @@ It only listens on this computer, and every request must carry your token
 website you visit can't read your profile.
 
     GET  /api/ping
+    GET  /api/vault     profile + saved answers + resume files, kept by the extension for offline use
     GET  /api/profile
     GET  /api/job?url=<application page URL>      the job + its tailored documents
     GET  /api/file?job=<id>&kind=resume|cover_letter
@@ -159,7 +160,60 @@ def r_applied(cfg, conn, q, body):
     return {"ok": True}
 
 
+def _as_pdf(cfg, path):
+    """A resume as a file a form can take: a .tex is compiled once per version (cached
+    by its hash in data/extension_files/); a PDF or DOCX is used as it is."""
+    import hashlib
+
+    from copilot import latex
+    if path.suffix.lower() != ".tex":
+        return path
+    out = cfg.data_dir / "extension_files" / f"{hashlib.sha256(path.read_bytes()).hexdigest()[:16]}.pdf"
+    if not out.exists():
+        out.parent.mkdir(parents=True, exist_ok=True)
+        latex.compile_pdf(path.read_text(encoding="utf-8"), out)
+    return out
+
+
+def r_vault(cfg, conn, q, body):
+    """Everything the extension keeps so it can fill pages with the app closed: your
+    profile, your saved answers, and your resumes as files. It stays in the extension's
+    own storage on this computer."""
+    import base64
+
+    from copilot import library
+    lib = library.Resolver(cfg, conn)
+    name = apply.load_profile(cfg).get("name", "").replace(" ", "_") or "Resume"
+    files, seen = [], set()
+    default = lib.cfg.resume
+    default_label = lib.lib.get(default.name, {}).get("label")
+    sources = [(default, f"{default_label} (default)" if default_label else "Default resume",
+                lib.lib.get(default.name, {}).get("roles", []))] + [
+        (lib.folder / f, e["label"], e["roles"]) for f, e in lib.lib.items()]
+    for path, label, roles in sources:
+        if path in seen or not path.exists():
+            continue
+        seen.add(path)
+        # The file name an employer sees: your name, and the role for library versions.
+        role = "" if path == default else "_" + label.replace(" ", "_").replace("/", "-")
+        try:
+            doc = _as_pdf(cfg, path)
+        except Exception as exc:  # noqa: BLE001 - one broken resume must not block the rest
+            files.append({"label": label, "error": str(exc)[:200]})
+            continue
+        suffix = doc.suffix.lower()
+        files.append({"label": label, "roles": [library.FAMILIES[r] for r in roles],
+                      "name": f"{name}_Resume{role}{suffix}",
+                      "type": mimetypes.guess_type(doc.name)[0] or "application/octet-stream",
+                      "base64": base64.b64encode(doc.read_bytes()).decode()})
+    answers = [{"question": r["question"], "qkey": r["qkey"], "answer": r["answer"]}
+               for r in conn.execute("SELECT question, qkey, answer FROM answers")
+               if not apply.is_motivation(r["question"])]
+    return {"profile": apply.load_profile(cfg), "answers": answers, "files": files, "synced_at": db.now()}
+
+
 ROUTES = {
+    ("GET", "/api/vault"): r_vault,
     ("GET", "/api/ping"): r_ping, ("GET", "/api/profile"): r_profile, ("GET", "/api/job"): r_job,
     ("GET", "/api/file"): r_file, ("POST", "/api/answer"): r_answer, ("POST", "/api/answers"): r_answers,
     ("POST", "/api/applied"): r_applied,
