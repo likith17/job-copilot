@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Job Copilot Autofill</title>
+  <style>
+    body { font: 13px/1.45 system-ui, sans-serif; width: 300px; margin: 0; padding: 14px; color: #202124; }
+    h3 { margin: 0 0 8px; font-size: 15px; }
+    button { font: inherit; border-radius: 6px; padding: 7px 12px; cursor: pointer; }
+    #fill { width: 100%; border: 1px solid #1a73e8; background: #1a73e8; color: #fff; font-weight: 600; }
+    .row { display: flex; gap: 8px; margin-top: 10px; }
+    .row button { flex: 1; border: 1px solid #dadce0; background: #fff; color: #1a73e8; }
+    label { display: block; margin: 12px 0 4px; font-weight: 600; }
+    select { width: 100%; padding: 5px; font: inherit; }
+    .m { color: #5f6368; font-size: 12px; margin-top: 8px; }
+    .ok { color: #188038; } .bad { color: #d93025; }
+  </style>
+</head>
+<body>
+  <h3>Job Copilot Autofill</h3>
+  <button id="fill">Fill this page</button>
+  <label for="resume">Resume to attach</label>
+  <select id="resume"></select>
+  <div class="row"><button id="sync">Sync from app</button><button id="settings">Settings</button></div>
+  <p id="status" class="m"></p>
+  <p class="m">Shortcut: <b>Alt+Shift+F</b>. Or right-click a page → <i>Fill this page with Job Copilot</i>.
+    Click into any field to see a suggestion.</p>
+  <script src="popup.js"></script>
+</body>
+</html>

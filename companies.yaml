@@ -1,0 +1,244 @@
+# Boards crawled by the daily pipeline. Each entry was verified live (2026-10-09).
+# Find a company's token from its careers URL:
+#   boards.greenhouse.io/<token> | job-boards.greenhouse.io/<token>  -> ats: greenhouse
+#   jobs.ashbyhq.com/<token>                                         -> ats: ashby
+#   jobs.lever.co/<token>                                            -> ats: lever
+# Check new entries with:  python -m copilot companies
+#
+# Deliberately left out: SpaceX, Shield AI, Anduril (ITAR / US-person roles).
+
+companies:
+  # ---- AI labs & AI-native ----
+  - {name: OpenAI,        ats: ashby,      identifier: openai}
+  - {name: Anthropic,     ats: greenhouse, identifier: anthropic}
+  - {name: Cohere,        ats: ashby,      identifier: cohere}
+  - {name: Perplexity,    ats: ashby,      identifier: perplexity}
+  - {name: Scale AI,      ats: greenhouse, identifier: scaleai}
+  - {name: Harvey,        ats: ashby,      identifier: harvey}
+  - {name: Sierra,        ats: ashby,      identifier: sierra}
+  - {name: Decagon,       ats: ashby,      identifier: decagon}
+  - {name: ElevenLabs,    ats: ashby,      identifier: elevenlabs}
+  - {name: Cursor,        ats: ashby,      identifier: cursor}
+  - {name: Cognition,     ats: ashby,      identifier: cognition}
+  - {name: LangChain,     ats: ashby,      identifier: langchain}
+  - {name: LlamaIndex,    ats: ashby,      identifier: llamaindex}
+  - {name: Deepgram,      ats: ashby,      identifier: deepgram}
+  - {name: Baseten,       ats: ashby,      identifier: baseten}
+  - {name: Modal,         ats: ashby,      identifier: modal}
+  - {name: Writer,        ats: ashby,      identifier: writer}
+  - {name: Replit,        ats: ashby,      identifier: replit}
+  - {name: Lovable,       ats: ashby,      identifier: lovable}
+  - {name: Suno,          ats: ashby,      identifier: suno}
+  - {name: Synthesia,     ats: ashby,      identifier: synthesia}
+  - {name: Pika,          ats: ashby,      identifier: pika}
+  - {name: Runway,        ats: ashby,      identifier: runway}
+  - {name: Pinecone,      ats: ashby,      identifier: pinecone}
+  - {name: Glean,         ats: greenhouse, identifier: gleanwork}
+  - {name: SambaNova,     ats: greenhouse, identifier: sambanovasystems}
+  - {name: Abridge,       ats: ashby,      identifier: abridge}
+  - {name: Ambience Healthcare, ats: ashby, identifier: ambiencehealthcare}
+  - {name: PathAI,        ats: greenhouse, identifier: pathai}
+  - {name: Recursion,     ats: greenhouse, identifier: recursionpharmaceuticals}
+
+  # ---- Autonomy / robotics / vision ----
+  - {name: Waymo,         ats: greenhouse, identifier: waymo}
+  - {name: Nuro,          ats: greenhouse, identifier: nuro}
+  - {name: Zoox,          ats: lever,      identifier: zoox}
+  - {name: Verkada,       ats: greenhouse, identifier: verkada}
+  - {name: Samsara,       ats: greenhouse, identifier: samsara}
+
+  # ---- Data / infra / dev tools ----
+  - {name: Databricks,    ats: greenhouse, identifier: databricks}
+  - {name: Datadog,       ats: greenhouse, identifier: datadog}
+  - {name: MongoDB,       ats: greenhouse, identifier: mongodb}
+  - {name: Elastic,       ats: greenhouse, identifier: elastic}
+  - {name: Cloudflare,    ats: greenhouse, identifier: cloudflare}
+  - {name: Okta,          ats: greenhouse, identifier: okta}
+  - {name: GitLab,        ats: greenhouse, identifier: gitlab}
+  - {name: Temporal,      ats: ashby,      identifier: temporal}
+  - {name: Supabase,      ats: ashby,      identifier: supabase}
+  - {name: Hex,           ats: ashby,      identifier: hex}
+  - {name: PostHog,       ats: ashby,      identifier: posthog}
+  - {name: Linear,        ats: ashby,      identifier: linear}
+  - {name: Notion,        ats: ashby,      identifier: notion}
+  - {name: Figma,         ats: greenhouse, identifier: figma}
+  - {name: Asana,         ats: greenhouse, identifier: asana}
+  - {name: Zapier,        ats: ashby,      identifier: zapier}
+  - {name: Twilio,        ats: greenhouse, identifier: twilio}
+  - {name: Celonis,       ats: greenhouse, identifier: celonis}
+  - {name: Mozilla,       ats: greenhouse, identifier: mozilla}
+  - {name: Benchling,     ats: ashby,      identifier: benchling}
+
+  # ---- Consumer / marketplaces ----
+  - {name: Airbnb,        ats: greenhouse, identifier: airbnb}
+  - {name: DoorDash,      ats: greenhouse, identifier: doordashusa}
+  - {name: Instacart,     ats: greenhouse, identifier: instacart}
+  - {name: Lyft,          ats: greenhouse, identifier: lyft}
+  - {name: Pinterest,     ats: greenhouse, identifier: pinterest}
+  - {name: Reddit,        ats: greenhouse, identifier: reddit}
+  - {name: Roblox,        ats: greenhouse, identifier: roblox}
+  - {name: Discord,       ats: greenhouse, identifier: discord}
+  - {name: Duolingo,      ats: greenhouse, identifier: duolingo}
+  - {name: Dropbox,       ats: greenhouse, identifier: dropbox}
+  - {name: Spotify,       ats: lever,      identifier: spotify}
+  - {name: Twitch,        ats: greenhouse, identifier: twitch}
+  - {name: Peloton,       ats: greenhouse, identifier: peloton}
+  - {name: AppLovin,      ats: greenhouse, identifier: applovin}
+  - {name: Match Group,   ats: lever,      identifier: matchgroup}
+  - {name: Nextdoor,      ats: greenhouse, identifier: nextdoor}
+  - {name: Squarespace,   ats: greenhouse, identifier: squarespace}
+  - {name: Toast,         ats: greenhouse, identifier: toast}
+  - {name: Flexport,      ats: greenhouse, identifier: flexport}
+
+  # ---- Fintech & trading ----
+  - {name: Stripe,        ats: greenhouse, identifier: stripe}
+  - {name: Plaid,         ats: ashby,      identifier: plaid}
+  - {name: Ramp,          ats: ashby,      identifier: ramp}
+  - {name: Brex,          ats: greenhouse, identifier: brex}
+  - {name: Coinbase,      ats: greenhouse, identifier: coinbase}
+  - {name: Robinhood,     ats: greenhouse, identifier: robinhood}
+  - {name: Affirm,        ats: greenhouse, identifier: affirm}
+  - {name: Block,         ats: greenhouse, identifier: block}
+  - {name: Chime,         ats: greenhouse, identifier: chime}
+  - {name: SoFi,          ats: greenhouse, identifier: sofi}
+  - {name: Gusto,         ats: greenhouse, identifier: gusto}
+  - {name: Wealthfront,   ats: lever,      identifier: wealthfront}
+  - {name: Jane Street,   ats: greenhouse, identifier: janestreet}
+  - {name: Point72,       ats: greenhouse, identifier: point72}
+  - {name: IMC,           ats: greenhouse, identifier: imc}
+  - {name: DRW,           ats: greenhouse, identifier: drweng}
+  - {name: Jump Trading,  ats: greenhouse, identifier: jumptrading}
+
+  # ---- Added 2026-10-09 by probing ~200 AI/tech companies across all three ATSs ----
+  - {name: Lyra Health, ats: lever, identifier: lyrahealth}
+  - {name: Zscaler, ats: greenhouse, identifier: zscaler}
+  - {name: Nebius, ats: greenhouse, identifier: nebius}
+  - {name: Zipline, ats: greenhouse, identifier: flyzipline}
+  - {name: Crusoe, ats: ashby, identifier: crusoe}
+  - {name: CoreWeave, ats: greenhouse, identifier: coreweave}
+  - {name: Palantir, ats: lever, identifier: palantir}
+  - {name: Oscar Health, ats: greenhouse, identifier: oscar}
+  - {name: Navan, ats: greenhouse, identifier: tripactions}
+  - {name: Sony Interactive, ats: greenhouse, identifier: sonyinteractiveentertainmentglobal}
+  - {name: Fivetran, ats: greenhouse, identifier: fivetran}
+  - {name: ClickHouse, ats: ashby, identifier: clickhouse}
+  - {name: Optiver, ats: greenhouse, identifier: optiverus}
+  - {name: Riot Games, ats: greenhouse, identifier: riotgames}
+  - {name: Whoop, ats: ashby, identifier: whoop}
+  - {name: Skydio, ats: ashby, identifier: skydio}
+  - {name: Wayve, ats: ashby, identifier: wayve}
+  - {name: Epic Games, ats: greenhouse, identifier: epicgames}
+  - {name: Rubrik, ats: greenhouse, identifier: rubrik}
+  - {name: Box, ats: greenhouse, identifier: boxinc}
+  - {name: Wiz, ats: greenhouse, identifier: wizinc}
+  - {name: Cerebras, ats: ashby, identifier: cerebras}
+  - {name: Ripple, ats: greenhouse, identifier: ripple}
+  - {name: Mercor, ats: ashby, identifier: mercor}
+  - {name: Intercom, ats: greenhouse, identifier: intercom}
+  - {name: Grafana Labs, ats: greenhouse, identifier: grafanalabs}
+  - {name: 1X, ats: ashby, identifier: 1x}
+  - {name: Gong, ats: greenhouse, identifier: gongio}
+  - {name: Figure AI, ats: greenhouse, identifier: figureai}
+  - {name: Waabi, ats: lever, identifier: waabi}
+  - {name: Tower Research, ats: greenhouse, identifier: towerresearchcapital}
+  - {name: Justworks, ats: greenhouse, identifier: justworks}
+  - {name: Lambda, ats: ashby, identifier: lambda}
+  - {name: Vercel, ats: greenhouse, identifier: vercel}
+  - {name: Headway, ats: ashby, identifier: headway}
+  - {name: Upstart, ats: greenhouse, identifier: upstart}
+  - {name: Fireworks AI, ats: ashby, identifier: fireworks}
+  - {name: Vanta, ats: ashby, identifier: vanta}
+  - {name: Together AI, ats: greenhouse, identifier: togetherai}
+  - {name: Motional, ats: greenhouse, identifier: motional}
+  - {name: Faire, ats: greenhouse, identifier: faire}
+  - {name: Abnormal Security, ats: greenhouse, identifier: abnormalsecurity}
+  - {name: Agility Robotics, ats: greenhouse, identifier: agilityrobotics}
+  - {name: Cohere Health, ats: greenhouse, identifier: coherehealth}
+  - {name: Sigma Computing, ats: greenhouse, identifier: sigmacomputing}
+  - {name: Carta, ats: greenhouse, identifier: carta}
+  - {name: 1Password, ats: ashby, identifier: 1password}
+  - {name: Kodiak, ats: greenhouse, identifier: kodiak}
+  - {name: Mercury, ats: greenhouse, identifier: mercury}
+  - {name: Docker, ats: ashby, identifier: docker}
+  - {name: Thumbtack, ats: ashby, identifier: thumbtack}
+  - {name: Tanium, ats: greenhouse, identifier: tanium}
+  - {name: Zocdoc, ats: greenhouse, identifier: zocdoc}
+  - {name: LaunchDarkly, ats: greenhouse, identifier: launchdarkly}
+  - {name: PagerDuty, ats: greenhouse, identifier: pagerduty}
+  - {name: New Relic, ats: greenhouse, identifier: newrelic}
+  - {name: Mixpanel, ats: greenhouse, identifier: mixpanel}
+  - {name: ClickUp, ats: ashby, identifier: clickup}
+  - {name: Virtu, ats: greenhouse, identifier: virtu}
+  - {name: Snorkel AI, ats: greenhouse, identifier: snorkelai}
+  - {name: Sentry, ats: ashby, identifier: sentry}
+  - {name: Checkr, ats: greenhouse, identifier: checkr}
+  - {name: Akuna Capital, ats: greenhouse, identifier: akunacapital}
+  - {name: Amplitude, ats: ashby, identifier: amplitude}
+  - {name: Physical Intelligence, ats: ashby, identifier: physicalintelligence}
+  - {name: May Mobility, ats: greenhouse, identifier: maymobility}
+  - {name: Old Mission, ats: greenhouse, identifier: oldmissioncapital}
+  - {name: Standard Bots, ats: ashby, identifier: standardbots}
+  - {name: Luma AI, ats: ashby, identifier: lumaai}
+  - {name: StockX, ats: greenhouse, identifier: stockx}
+  - {name: Speak, ats: ashby, identifier: speak}
+  - {name: Gemini, ats: greenhouse, identifier: gemini}
+  - {name: Drata, ats: ashby, identifier: drata}
+  - {name: Starburst, ats: greenhouse, identifier: starburst}
+  - {name: Poshmark, ats: ashby, identifier: poshmark}
+  - {name: Strava, ats: ashby, identifier: strava}
+  - {name: Lucid, ats: greenhouse, identifier: lucidsoftware}
+  - {name: Cartesia, ats: ashby, identifier: cartesia}
+  - {name: Isomorphic Labs, ats: greenhouse, identifier: isomorphiclabs}
+  - {name: Fireblocks, ats: greenhouse, identifier: fireblocks}
+  - {name: Sesame, ats: ashby, identifier: sesame}
+  - {name: Vapi, ats: ashby, identifier: vapi}
+  - {name: Arize AI, ats: greenhouse, identifier: arizeai}
+  - {name: Miro, ats: ashby, identifier: miro}
+  - {name: Webflow, ats: greenhouse, identifier: webflow}
+  - {name: Flatiron Health, ats: greenhouse, identifier: flatironhealth}
+  - {name: Samsung Research America, ats: greenhouse, identifier: samsungresearchamerica}
+  - {name: Warp, ats: ashby, identifier: warp}
+  - {name: Anchorage Digital, ats: lever, identifier: anchorage}
+  - {name: Snyk, ats: ashby, identifier: snyk}
+  - {name: Dexterity, ats: lever, identifier: dexterity}
+  - {name: Yext, ats: greenhouse, identifier: yext}
+  - {name: Anyscale, ats: ashby, identifier: anyscale}
+  - {name: Alchemy, ats: ashby, identifier: alchemy}
+  - {name: Dataiku, ats: greenhouse, identifier: dataiku}
+  - {name: Contentful, ats: greenhouse, identifier: contentful}
+  - {name: Hopper, ats: ashby, identifier: hopper}
+  - {name: Cockroach Labs, ats: greenhouse, identifier: cockroachlabs}
+  - {name: Honeycomb, ats: greenhouse, identifier: honeycomb}
+  - {name: Tavus, ats: ashby, identifier: tavus}
+  - {name: Confluent, ats: ashby, identifier: confluent}
+  - {name: Generate Biomedicines, ats: greenhouse, identifier: generatebiomedicines}
+  - {name: Wise, ats: greenhouse, identifier: wise}
+  - {name: Doximity, ats: greenhouse, identifier: doximity}
+  - {name: Coursera, ats: greenhouse, identifier: coursera}
+  - {name: Character.AI, ats: ashby, identifier: character}
+  - {name: Insitro, ats: ashby, identifier: insitro}
+  - {name: CircleCI, ats: greenhouse, identifier: circleci}
+  - {name: Zilliz, ats: lever, identifier: zilliz}
+  - {name: PlanetScale, ats: greenhouse, identifier: planetscale}
+  - {name: Unify, ats: ashby, identifier: unify}
+  - {name: Reka, ats: ashby, identifier: reka}
+  - {name: Browserbase, ats: ashby, identifier: browserbase}
+  - {name: Sumo Logic, ats: greenhouse, identifier: sumologic}
+  - {name: Calendly, ats: greenhouse, identifier: calendly}
+  - {name: Modern Treasury, ats: ashby, identifier: moderntreasury}
+  - {name: Ollama, ats: ashby, identifier: ollama}
+  - {name: Khan Academy, ats: greenhouse, identifier: khanacademy}
+  - {name: Udemy, ats: greenhouse, identifier: udemy}
+  - {name: Nomic, ats: ashby, identifier: nomic}
+  - {name: Quora, ats: ashby, identifier: quora}
+  - {name: Hume AI, ats: greenhouse, identifier: humeai}
+  - {name: Netlify, ats: greenhouse, identifier: netlify}
+  - {name: Airtable, ats: greenhouse, identifier: airtable}
+  - {name: Weaviate, ats: ashby, identifier: weaviate}
+  - {name: Poolside, ats: ashby, identifier: poolside}
+  - {name: Calm, ats: greenhouse, identifier: calm}
+  - {name: Imbue, ats: greenhouse, identifier: imbue}
+  - {name: Zed, ats: ashby, identifier: zed}
+  - {name: Chroma, ats: ashby, identifier: trychroma}
+  - {name: Medium, ats: greenhouse, identifier: medium}
+  - {name: AllTrails, ats: lever, identifier: alltrails}

@@ -2,3 +2,19 @@
 __pycache__/
 *.db
 .venv/
+# Personal data: uploaded resumes/cover letters, job DB, generated applications
+data/
+*.egg-info/
+.pytest_cache/
+
+# Personal documents: never published
+*.pdf
+*.docx
+*.tex
+!tests/**/*.tex
+test-jobw/
+# Local tooling
+.claude/
+
+# Your application profile (personal)
+profile.yaml

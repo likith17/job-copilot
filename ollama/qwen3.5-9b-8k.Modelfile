@@ -1,0 +1,4 @@
+FROM qwen3.5:9b
+# Ollama defaults to a 4K context and silently drops the start of longer prompts.
+# Grading and per-bullet prompts stay under 8K, which keeps the whole model on an 8 GB GPU.
+PARAMETER num_ctx 8192

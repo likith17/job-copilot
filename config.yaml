@@ -1,0 +1,254 @@
+# Job Copilot pipeline configuration.
+# Every daily run reads this file; edit it freely, nothing is cached from it.
+
+resume: resume.pdf               # default until you upload one in the app (PDF, DOCX or .tex)
+companies: companies.yaml        # boards to crawl
+data_dir: data                   # DB, master resume, generated documents, Excel
+
+# ---- Stage 1: cheap filters (no ML, no API calls) ----
+prefilter:
+  # Whole-word, case-insensitive. Title must contain at least one include term...
+  title_include: [engineer, engineering, scientist, developer, machine learning, ml, ai, llm, nlp, data, applied, research, computer vision]
+  # ...and none of the exclude terms. Early-career search: internships, new grad, and "I"/"II" roles
+  # (3 YOE + MS fits them) stay in; senior titles are out.
+  title_exclude: [senior, sr., sr, staff, principal, lead, manager, management, director, head, vp,
+                  architect, distinguished, fellow, iii, iv, recruiter, sales, account, solutions, support, sre,
+                  security, hardware, mechanical, electrical, firmware, analog, rf, phd,
+                  grant, grants, fund, scholarship, talent community, general application]
+  # Where to look: us (United States, incl. remote-US) and/or world (everywhere else).
+  # Each region gets its own daily list; pick one in the app.
+  regions: [us, world]
+  # Early career only: drop postings whose *minimum* stated experience is above this.
+  max_years_required: 4
+  # Ignore postings older than this many days (null = no limit).
+  max_age_days: 30
+
+# ---- Stage 2: ranking ----
+scoring:
+  min_match: 0.45   # embedding+skills match (local, free) needed to reach the LLM grader
+  min_fit: 70       # LLM fit grade (0-100) needed to be shortlisted for tailoring
+
+# ---- Today's shortlist: the few jobs worth your time each day (copilot/shortlist.py) ----
+shortlist:
+  size: 11          # jobs on the daily list
+  min_fit: 60       # lowest AI fit grade that can appear on it
+  per_company: 1    # a second job from one company only fills a short list
+  per_family: 3     # at most this many of one kind of job, unless the list would be short
+
+# ---- Stage 3: AI work ----
+llm:
+  max_grade_per_run: 100     # best matches first; ~11 s each on a local model. The rest wait for the next run
+  max_tailor_per_run: 0      # documents are written when you ask for them (Generate in the app), not for every match
+  skip_no_sponsorship: true  # don't write documents for postings that rule out sponsorship
+
+  # Where each model runs. "openai" = any OpenAI-compatible endpoint.
+  providers:
+    anthropic: {type: anthropic}                                   # ANTHROPIC_API_KEY in .env
+    local:     {type: openai, base_url: "http://localhost:11434/v1", api_key: ollama}   # Ollama, free
+    groq:      {type: openai, base_url: "https://api.groq.com/openai/v1", api_key_env: GROQ_API_KEY}
+    gemini:    {type: openai, base_url: "https://generativelanguage.googleapis.com/v1beta/openai/",
+                api_key_env: GEMINI_API_KEY}
+
+  # Which provider and model each step uses.
+  #
+  # Everything runs on your own GPU through Ollama: no account, no API key, no bill.
+  # (Ollama's cloud models, which this used before, became paid in Nov 2026.)
+  #   ollama pull qwen3.5:9b
+  #   ollama create jc-qwen3.5-9b -f ollama/qwen3.5-9b-8k.Modelfile
+  #
+  # Grader benchmark: 24 real jobs vs Claude Opus grades (Spearman, 1.0 = same ranking).
+  #   gpt-oss:120b-cloud (paid now)    0.79   1.5 s/job
+  #   qwen3.5:9b  (local)              0.74   11 s/job    <- used
+  #   qwen3:8b    (local, rubric)      0.60   4.6 s/job   (add `method: rubric` for small models)
+  #   qwen3:8b    (local)              0.48   9.3 s/job
+  #
+  # One request at a time (`workers: 1`): an 8 GB GPU holds one copy of the model.
+  # To use a hosted model instead (e.g. a free Groq or Gemini key in .env), set
+  # `provider: groq` / `gemini` and its model name on any task below.
+  tasks:
+    grade:       &local {provider: local, model: "jc-qwen3.5-9b", workers: 1, timeout: 600,
+                         extra_body: {reasoning_effort: none}, min_fit: 75}
+    sponsorship: {<<: *local}
+    # Writing: one focused call per bullet (see copilot/bullets.py).
+    tailor:      {<<: *local, mode: per_bullet}
+    # Answers to form questions ("Why this company?"), from your story, cover letter and resume.
+    answer:      {<<: *local}
+
+# ---- Output ----
+excel: jobs.xlsx           # written inside data_dir
+
+# ---- Applying: the autofill extension and `python -m copilot apply` ----
+# Your answers (contact, work authorization, EEO...) live in profile.yaml.
+apply:
+  browser: chrome      # chrome or msedge: the runner drives your installed browser
+  per_run: 10          # how many top Ready jobs `copilot apply` opens
+  # Auto-submit (`copilot apply --submit`) only sends applications that pass
+  # every gate: Ready documents, fit >= min_fit, no sponsorship dealbreaker,
+  # resume attached, every answer from your profile or answer bank, no
+  # CAPTCHA. Everything else is left filled in its tab for you.
+  min_fit: 80
+  daily_cap: 15
+  per_company_per_day: 2
+  # Off until a supervised pilot confirms real submissions work. true = `copilot auto`
+  # sends what passes every gate; pause anytime from the app or with data/STOP_AUTO_APPLY.
+  auto_submit: false
+  # AI-written answers (e.g. "Why this company?") that pass the fact-check against your
+  # resume and story. false = an application with one waits for you to read it.
+  send_ai_answers: false
+
+# ---- Writing: how resumes and cover letters are tailored ----
+# Style and focus only. The honesty rules always apply on top: nothing is
+# invented, every metric is kept, and changes are checked before you see them.
+#
+# Some of these rules are also enforced in code, whatever the model writes:
+# banned words, plain ASCII punctuation, no invented numbers or tools, no
+# dropped metrics, layout-safe bullet length. Format is preserved by the system.
+writing:
+  instructions: |
+    You are an expert technical recruiter, hiring manager, ATS optimization
+    specialist, and professional resume writer with extensive experience
+    recruiting for Fortune 500 companies and AI/Software Engineering roles.
+    Rewrite my resume to maximize ATS compatibility while remaining completely
+    truthful.
+
+    Objectives:
+    - Achieve a high ATS match for this job description.
+    - Naturally work in the posting's important keywords: languages, frameworks,
+      libraries, cloud platforms, databases, AI/ML terms, DevOps tools,
+      methodologies, soft skills, business terms. No keyword stuffing.
+    - Read as if written by an experienced human, not AI: confident,
+      professional, concise, honest, easy to scan in under 30 seconds.
+    - Show measurable business or technical impact wherever my resume has it.
+
+    Keyword matching: mirror the posting's exact terminology where it truthfully
+    fits ("AI agents" if the posting says AI agents rather than "LLM workflows";
+    "Python", not "Python programming"). Never copy the posting's sentences.
+
+    STAR: where it fits, let a bullet show situation, task, action and result.
+    Don't force it into every bullet.
+
+    Verbs: start bullets with strong, varied verbs (Built, Developed,
+    Engineered, Designed, Optimized, Automated, Implemented, Improved, Reduced,
+    Increased, Accelerated, Evaluated, Deployed, Integrated, Collaborated,
+    Investigated, Resolved, Led, Created). Don't repeat the same opening verb.
+
+    Metrics: keep every metric I have (percentages, latency, speed, accuracy,
+    precision, recall, mAP, throughput, dataset size, users, cost, revenue,
+    incidents, uptime). Never invent or estimate a number. If a bullet has no
+    metric, improve the wording without adding one.
+
+    Accuracy: never exaggerate, never claim production deployment that didn't
+    happen, never imply ownership beyond what I did, no buzzwords without
+    substance. Every technology mentioned must match real experience.
+
+    Style: plain, direct English. No corporate fluff, cliches, or generic
+    statements. Never use: leveraged, utilized, spearheaded, synergized,
+    cutting-edge, world-class, revolutionary, game-changing, highly motivated,
+    results-driven, passionate professional. Use only standard ASCII
+    punctuation: no em or en dashes, no smart quotes, no decorative symbols.
+    Use hyphens only where grammar needs them. Perfect grammar, consistent tense.
+
+    Conciseness: 1-2 lines per bullet. Prefer "Built X using Y to achieve Z" to
+    long explanations. Cut filler words.
+
+    Projects: highlight the problem solved, architecture, technologies,
+    algorithms, evaluation, measurable results, engineering decisions, and
+    deployment if it happened. Technical depth over feature lists.
+
+    Work experience: highlight ownership, technical contribution, collaboration,
+    problem solving, production impact, reliability, automation, scalability,
+    debugging, and performance. Not a list of duties.
+
+    Skills: reorder only when it helps this posting; never add a skill I don't
+    have.
+  # Sections the writer may change; any left out stay exactly as on your resume.
+  sections: [summary, experience, projects, skills]
+
+  # Also write a cover letter with each resume. Off by default: it roughly doubles the
+  # model calls per job, and a letter that fails the fact-check is withheld anyway.
+  cover_letter: true      # from your story when it has [Role]/[Company] placeholders: one short AI call
+
+  # How the cover letter is written. Enforced in code as well: banned phrases,
+  # plain ASCII punctuation, word count (letter_words), must-include points, and
+  # no claimed skills or numbers that your resume doesn't support.
+  letter_instructions: |
+    You are an experienced hiring manager, technical recruiter, and career
+    writer for Software Engineering, AI, Machine Learning, Data Science, and
+    technology roles. Write a highly personalized cover letter from my resume
+    and the job description. It should sound authentic, confident, technically
+    competent, and genuinely interested, like an engineer who understands the
+    company's work wrote it, not AI.
+
+    Goal: convince the hiring manager that I want to contribute to the
+    company's success; adapt and learn quickly; am dependable and take work
+    seriously; value ownership and accountability; am technically capable;
+    want to solve meaningful problems; am honest about my experience; and will
+    make a positive long-term impact on the team. Focus on the value I can
+    create for the company, not only why I want the job.
+
+    Personalization: make clear why this company interests me, why this role
+    fits my background, how my experience matches their engineering challenges,
+    and how I can contribute from day one. Never open with "I am excited to
+    apply"; open with a sentence connecting the company's mission, product, or
+    engineering work to my experience or interests. Use what the posting says
+    about the company; don't invent facts about the company.
+
+    Motivation, shown naturally and without exaggerated or emotional language:
+    I want to build things that matter, make a real impact, solve real
+    engineering problems, keep learning while contributing, and produce
+    reliable, high-quality work.
+
+    Traits: show, through real examples from my resume rather than by listing
+    them, that I am adaptable, reliable, accountable, serious about my work,
+    collaborative, eager to learn, calm under pressure, and willing to take
+    ownership. (For example, leading incident response at a previous job
+    shows accountability and calm under pressure.)
+
+    Technical alignment: identify the posting's important technologies,
+    languages, frameworks, AI terms, cloud platforms, methods, and
+    responsibilities. Where I have direct experience, connect it naturally to my
+    resume, e.g. "The role's emphasis on reliable backend systems matches my
+    work supporting a large production platform, where I investigated
+    production issues and resolved high-impact incidents." Where I don't, say so
+    honestly, e.g. "Although I haven't used Power BI professionally, I worked
+    with it in my coursework and am confident I can apply it on the job." Do
+    that only for items in my coursework list below or on my resume; for
+    anything else, state the gap plainly and that I'd ramp up quickly. Never
+    imply professional experience I don't have.
+
+    Use my strongest experiences without repeating resume bullets: explain the
+    problem, why it mattered, what I learned, and how it prepares me for this
+    role. Connect work to outcomes (reliability, automation, production
+    support, efficiency, reduced response time, model performance, measured
+    results) using only facts and numbers from my resume.
+
+    Keep most of the letter about the company, the role, and how my background
+    helps; every paragraph should answer "why does this make me valuable to
+    this employer?"
+
+    Structure: four concise paragraphs. 1) personalized opening connecting my
+    interests to the company's mission and the role; 2) relevant experience
+    and technical strengths matched to the posting; 3) personal qualities shown
+    through real examples, and how I'd contribute to the team; 4) a confident
+    close asking to discuss how I can help the company reach its goals.
+
+    Style: simple, natural English that sounds like a thoughtful engineer.
+    Avoid: I am thrilled, I am passionate, cutting-edge, leverage, utilize,
+    spearheaded, dynamic environment, fast-paced, innovative solutions,
+    results-driven, world-class, game-changing. Standard business letter, no
+    bullet points, no excessive bold, only standard ASCII punctuation (no em or
+    en dashes). Correct grammar and spelling; concise, professional, confident.
+
+  # Word range for the cover letter body; letters outside it are rewritten.
+  letter_words: [250, 450]
+
+  # Tools and topics you studied in coursework (e.g. at VIT) that aren't on your
+  # resume. The letter may mention these as coursework exposure, never as
+  # professional experience, and they won't be flagged as invented. Example:
+  #   coursework: [Power BI, Tableau]
+  coursework: []
+
+  # Points every cover letter must include (true facts from you). Each letter is
+  # checked for them and flagged for review if one is missing. Example:
+  #   - I'm on F-1 OPT with STEM extension and can start immediately
+  letter_points: []
